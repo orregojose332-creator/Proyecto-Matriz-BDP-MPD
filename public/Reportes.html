@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tablero · Matriz MDP</title>
+<link rel="icon" href="favicon.svg">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main>
+  <h1>Tablero de riesgos</h1>
+  <p class="sub">Se actualiza solo cuando alguien carga o modifica un riesgo. No hace falta refrescar.</p>
+  <div id="aviso" class="aviso error" hidden></div>
+
+  <div class="acciones" style="margin-bottom:16px">
+    <div style="min-width:240px">
+      <label for="ciclo">Ciclo de evaluación</label>
+      <select id="ciclo"></select>
+    </div>
+    <div style="align-self:end"><button id="btn-csv">Exportar CSV</button></div>
+  </div>
+
+  <section class="rejilla kpis" id="kpis"></section>
+
+  <section class="rejilla graficos">
+    <div class="tarjeta">
+      <h2>Riesgo promedio por factor</h2>
+      <div class="leyenda">
+        <span><i style="background:var(--serie-1)"></i>Inherente</span>
+        <span><i style="background:var(--serie-2)"></i>Residual (con controles)</span>
+      </div>
+      <div id="g-factores"></div>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Riesgos por nivel residual</h2>
+      <div id="g-niveles"></div>
+    </div>
+
+    <div class="tarjeta" style="grid-column:1/-1">
+      <h2>Mapa de calor — probabilidad × impacto</h2>
+      <p class="sub" style="margin:-8px 0 14px;font-size:12px">
+        Cantidad de riesgos en cada celda. El color indica el nivel inherente de esa combinación.</p>
+      <div id="g-mapa"></div>
+    </div>
+
+    <div class="tarjeta" style="grid-column:1/-1">
+      <h2>Diez riesgos residuales más altos</h2>
+      <div id="tabla-top"></div>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+<script>
+'use strict';
+(async () => {
+  const u = await MDP.iniciar({ permiso: 'reportes.ver' });
+  if (!u) return;
+
+  const { ui, api } = MDP;
+  const COLOR_NIVEL = { Bajo: 'var(--nivel-bajo)', Moderado: 'var(--nivel-moderado)',
+                        Alto: 'var(--nivel-alto)', Critico: 'var(--nivel-critico)' };
+  const ORDEN_NIVEL = ['Bajo', 'Moderado', 'Alto', 'Critico'];
+  let datos = null, cicloActual = '';
+
+  const svg = (w, h, hijos) =>
+    `<svg viewBox="0 0 ${w} ${h}" role="img" preserveAspectRatio="xMidYMid meet">${hijos}</svg>`;
+
+  // ─── KPIs ────────────────────────────────────────────────────────────────
+  function pintarKpis(k) {
+    const tarjeta = (etiqueta, valor, nota) => `
+      <div class="tarjeta kpi">
+        <div class="etiqueta">${etiqueta}</div>
+        <div class="valor">${valor}</div>
+        <div class="nota">${nota}</div>
+      </div>`;
+    document.getElementById('kpis').innerHTML =
+      tarjeta('Riesgos registrados', ui.num(k.total), `${ui.num(k.aprobados)} aprobados · ${ui.num(k.borradores)} en borrador`) +
+      tarjeta('Altos y críticos', ui.num(k.criticos),
+              k.total ? `${ui.num(k.criticos / k.total * 100, 1)}% del total` : 'Sin riesgos cargados') +
+      tarjeta('Riesgo inherente promedio', ui.num(k.inherente_prom, 1), 'Escala 1 a 25, sin controles') +
+      tarjeta('Riesgo residual promedio', ui.num(k.residual_prom, 1), 'Escala 1 a 25, con controles aplicados');
+  }
+
+  // ─── Barras agrupadas: inherente vs residual por factor ──────────────────
+  function pintarFactores(filas) {
+    if (!filas.length) return document.getElementById('g-factores').innerHTML =
+      '<div class="vacio">Sin datos</div>';
+
+    const W = 520, H = 260, M = { t: 10, r: 14, b: 54, l: 38 };
+    const ancho = W - M.l - M.r, alto = H - M.t - M.b;
+    const maxY = 25;                              // escala fija: el riesgo va de 1 a 25
+    const y = v => M.t + alto - (v / maxY) * alto;
+    const paso = ancho / filas.length;
+    const barra = Math.min(26, paso / 3.2);       // deja aire entre grupos
+
+    let s = '';
+    // Rejilla recesiva con sus marcas
+    for (let v = 0; v <= maxY; v += 5) {
+      s += `<line x1="${M.l}" x2="${W - M.r}" y1="${y(v)}" y2="${y(v)}"
+             stroke="var(--grid)" stroke-width="1"/>
+            <text x="${M.l - 7}" y="${y(v) + 4}" text-anchor="end"
+             font-size="10" fill="var(--ink-muted)">${v}</text>`;
+    }
+
+    filas.forEach((f, i) => {
+      const cx = M.l + paso * i + paso / 2;
+      // 2px de separacion entre las dos barras del grupo
+      const pares = [
+        { v: +f.inherente_prom, x: cx - barra - 1, color: 'var(--serie-1)', etiqueta: 'Inherente' },
+        { v: +f.residual_prom,  x: cx + 1,         color: 'var(--serie-2)', etiqueta: 'Residual'  },
+      ];
+      for (const p of pares) {
+        const altura = Math.max(0, (p.v / maxY) * alto);
+        // Extremo superior redondeado 4px, anclado a la linea de base
+        s += `<rect x="${p.x}" y="${y(p.v)}" width="${barra}" height="${altura}"
+                rx="4" fill="${p.color}"
+                data-tip="${ui.esc(f.nombre)}&lt;br&gt;${p.etiqueta}: &lt;strong&gt;${ui.num(p.v, 1)}&lt;/strong&gt; de 25&lt;br&gt;${ui.num(f.cantidad)} riesgo(s)"
+              ><title>${ui.esc(f.nombre)} — ${p.etiqueta}: ${ui.num(p.v, 1)}</title></rect>`;
+      }
+      // Etiqueta directa del factor, en dos lineas si hace falta
+      const palabras = String(f.nombre).split(' ');
+      const l1 = palabras.slice(0, 2).join(' '), l2 = palabras.slice(2).join(' ');
+      s += `<text x="${cx}" y="${M.t + alto + 16}" text-anchor="middle"
+             font-size="11" fill="var(--ink-2)">${ui.esc(l1)}</text>`;
+      if (l2) s += `<text x="${cx}" y="${M.t + alto + 29}" text-anchor="middle"
+                     font-size="11" fill="var(--ink-2)">${ui.esc(l2)}</text>`;
+      s += `<text x="${cx}" y="${M.t + alto + (l2 ? 43 : 30)}" text-anchor="middle"
+             font-size="10" fill="var(--ink-muted)">${ui.num(f.cantidad)} riesgos</text>`;
+    });
+
+    s += `<line x1="${M.l}" x2="${W - M.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--axis)" stroke-width="1"/>`;
+    document.getElementById('g-factores').innerHTML = svg(W, H, s);
+  }
+
+  // ─── Barras por nivel residual (paleta de estado) ────────────────────────
+  function pintarNiveles(filas) {
+    const mapa = Object.fromEntries(filas.map(f => [f.nivel, +f.cantidad]));
+    const total = ORDEN_NIVEL.reduce((a, n) => a + (mapa[n] || 0), 0);
+    if (!total) return document.getElementById('g-niveles').innerHTML = '<div class="vacio">Sin datos</div>';
+
+    const W = 520, H = 260, M = { t: 10, r: 14, b: 48, l: 38 };
+    const ancho = W - M.l - M.r, alto = H - M.t - M.b;
+    const maxY = Math.max(...ORDEN_NIVEL.map(n => mapa[n] || 0)) || 1;
+    const y = v => M.t + alto - (v / maxY) * alto;
+    const paso = ancho / ORDEN_NIVEL.length;
+    const barra = Math.min(54, paso - 14);        // el hueco deja >2px entre barras
+
+    let s = '';
+    for (let i = 0; i <= 4; i++) {
+      const v = Math.round(maxY * i / 4);
+      s += `<line x1="${M.l}" x2="${W - M.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/>
+            <text x="${M.l - 7}" y="${y(v) + 4}" text-anchor="end" font-size="10"
+             fill="var(--ink-muted)">${v}</text>`;
+    }
+
+    ORDEN_NIVEL.forEach((nivel, i) => {
+      const v = mapa[nivel] || 0;
+      const cx = M.l + paso * i + paso / 2;
+      const altura = Math.max(0, (v / maxY) * alto);
+      s += `<rect x="${cx - barra / 2}" y="${y(v)}" width="${barra}" height="${altura}" rx="4"
+              fill="${COLOR_NIVEL[nivel]}"
+              data-tip="Nivel ${nivel}&lt;br&gt;&lt;strong&gt;${v}&lt;/strong&gt; riesgo(s) · ${ui.num(v / total * 100, 1)}%"
+            ><title>${nivel}: ${v}</title></rect>`;
+      // Valor directo sobre la barra y etiqueta de texto abajo: el color nunca
+      // es el unico portador del significado.
+      if (v) s += `<text x="${cx}" y="${y(v) - 6}" text-anchor="middle" font-size="12"
+                    font-weight="700" fill="var(--ink-1)">${v}</text>`;
+      s += `<text x="${cx}" y="${M.t + alto + 17}" text-anchor="middle" font-size="11"
+             fill="var(--ink-2)">${nivel}</text>`;
+    });
+
+    s += `<line x1="${M.l}" x2="${W - M.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--axis)"/>`;
+    document.getElementById('g-niveles').innerHTML = svg(W, H, s);
+  }
+
+  // ─── Mapa de calor 5x5 ───────────────────────────────────────────────────
+  function pintarMapa(celdas, umbrales) {
+    const nivelDe = v => (umbrales.find(u => v <= u.hasta) || umbrales[umbrales.length - 1]).nivel;
+    const cuenta = {};
+    for (const c of celdas) cuenta[`${c.probabilidad}-${c.impacto}`] = +c.cantidad;
+
+    const LADO = 68, GAP = 2, M = { t: 12, r: 12, b: 42, l: 104 };
+    const W = M.l + LADO * 5 + M.r, H = M.t + LADO * 5 + M.b;
+    const ETIQ_P = ['Muy baja', 'Baja', 'Media', 'Alta', 'Muy alta'];
+    const ETIQ_I = ['Insignif.', 'Menor', 'Moderado', 'Mayor', 'Catastróf.'];
+
+    let s = '';
+    for (let p = 5; p >= 1; p--) {
+      const fila = 5 - p;
+      s += `<text x="${M.l - 10}" y="${M.t + fila * LADO + LADO / 2 + 4}" text-anchor="end"
+             font-size="11" fill="var(--ink-2)">${ETIQ_P[p - 1]}</text>`;
+      for (let im = 1; im <= 5; im++) {
+        const n = cuenta[`${p}-${im}`] || 0;
+        const valor = p * im;
+        const nivel = nivelDe(valor);
+        const x = M.l + (im - 1) * LADO, y = M.t + fila * LADO;
+        s += `<rect x="${x + GAP / 2}" y="${y + GAP / 2}" width="${LADO - GAP}" height="${LADO - GAP}"
+                rx="6" fill="${COLOR_NIVEL[nivel]}" fill-opacity="${n ? 0.92 : 0.13}"
+                stroke="var(--surface-1)" stroke-width="2"
+                data-tip="Probabilidad ${ETIQ_P[p-1]} × Impacto ${ETIQ_I[im-1]}&lt;br&gt;Nivel &lt;strong&gt;${nivel}&lt;/strong&gt; (${valor} de 25)&lt;br&gt;${n} riesgo(s)"
+              ><title>${ETIQ_P[p-1]} × ${ETIQ_I[im-1]}: ${n} riesgo(s), nivel ${nivel}</title></rect>
+              <text x="${x + LADO / 2}" y="${y + LADO / 2 + 2}" text-anchor="middle"
+                font-size="17" font-weight="700" pointer-events="none"
+                fill="${n ? '#fff' : 'var(--ink-muted)'}">${n || '·'}</text>
+              <text x="${x + LADO / 2}" y="${y + LADO / 2 + 18}" text-anchor="middle"
+                font-size="9" pointer-events="none"
+                fill="${n ? 'rgba(255,255,255,.85)' : 'var(--ink-muted)'}">${valor}</text>`;
+      }
+    }
+    for (let im = 1; im <= 5; im++) {
+      s += `<text x="${M.l + (im - 1) * LADO + LADO / 2}" y="${M.t + 5 * LADO + 18}"
+             text-anchor="middle" font-size="11" fill="var(--ink-2)">${ETIQ_I[im - 1]}</text>`;
+    }
+    s += `<text x="${M.l + LADO * 2.5}" y="${H - 6}" text-anchor="middle" font-size="11"
+           font-weight="600" fill="var(--ink-muted)">IMPACTO →</text>
+          <text transform="rotate(-90 14 ${M.t + LADO * 2.5})" x="14" y="${M.t + LADO * 2.5}"
+           text-anchor="middle" font-size="11" font-weight="600" fill="var(--ink-muted)">PROBABILIDAD →</text>`;
+
+    const leyenda = ORDEN_NIVEL.map(n =>
+      `<span><i style="background:${COLOR_NIVEL[n]}"></i>${n}</span>`).join('');
+    document.getElementById('g-mapa').innerHTML =
+      `<div class="mapa-caja">${svg(W, H, s)}</div>
+       <div class="leyenda" style="justify-content:center;margin:12px 0 0">${leyenda}</div>`;
+  }
+
+  // ─── Tabla de los diez mayores ───────────────────────────────────────────
+  function pintarTop(filas) {
+    if (!filas.length) return document.getElementById('tabla-top').innerHTML =
+      '<div class="vacio">Todavía no hay riesgos cargados en este ciclo.</div>';
+    document.getElementById('tabla-top').innerHTML = `
+      <div style="overflow-x:auto"><table>
+        <thead><tr>
+          <th>Código</th><th>Factor</th><th>Descripción</th>
+          <th class="num">Inherente</th><th class="num">Residual</th>
+          <th>Nivel</th><th class="num">Controles</th><th>Estado</th>
+        </tr></thead>
+        <tbody>${filas.map(r => `
+          <tr>
+            <td><strong>${ui.esc(r.codigo)}</strong></td>
+            <td>${ui.esc(r.factor_nombre)}</td>
+            <td>${ui.esc(r.descripcion).slice(0, 90)}</td>
+            <td class="num">${ui.num(r.inherente_valor, 1)}</td>
+            <td class="num"><strong>${ui.num(r.residual_valor, 1)}</strong></td>
+            <td>${ui.nivel(r.residual_nivel)}</td>
+            <td class="num">${ui.num(r.controles_count)}</td>
+            <td class="estado">${ui.esc(r.estado)}</td>
+          </tr>`).join('')}</tbody>
+      </table></div>`;
+  }
+
+  // ─── Tooltips compartidos ────────────────────────────────────────────────
+  document.addEventListener('mousemove', e => {
+    const o = e.target.closest?.('[data-tip]');
+    if (o) ui.tip.ver(o.dataset.tip, e); else ui.tip.ocultar();
+  });
+  document.addEventListener('mouseleave', () => ui.tip.ocultar());
+
+  // ─── Carga y refresco ────────────────────────────────────────────────────
+  async function cargar() {
+    try {
+      datos = await api(`/reportes/resumen${cicloActual ? '?evaluacion=' + cicloActual : ''}`);
+      pintarKpis(datos.kpi);
+      pintarFactores(datos.porFactor);
+      pintarNiveles(datos.porNivel);
+      pintarMapa(datos.mapa, datos.umbrales);
+      pintarTop(datos.top);
+    } catch (e) { ui.aviso(e.message); }
+  }
+
+  const catalogos = await api('/catalogos');
+  const sel = document.getElementById('ciclo');
+  sel.innerHTML = '<option value="">Todos los ciclos</option>' +
+    catalogos.evaluaciones.map(e =>
+      `<option value="${e.id}">${ui.esc(e.nombre)} (${ui.fecha(e.periodo_desde)} — ${ui.fecha(e.periodo_hasta)})</option>`).join('');
+  const abierta = catalogos.evaluaciones.find(e => e.estado === 'Abierta');
+  if (abierta) { sel.value = abierta.id; cicloActual = String(abierta.id); }
+  sel.onchange = () => { cicloActual = sel.value; cargar(); };
+
+  document.getElementById('btn-csv').onclick = () => {
+    if (!datos?.top?.length) return ui.aviso('No hay datos para exportar');
+    const cab = ['Codigo', 'Factor', 'Descripcion', 'Probabilidad', 'Impacto',
+                 'Inherente', 'Residual', 'Nivel', 'Estado'];
+    const filas = datos.top.map(r => [r.codigo, r.factor_nombre, r.descripcion,
+      r.probabilidad, r.impacto, r.inherente_valor, r.residual_valor, r.residual_nivel, r.estado]);
+    const csv = [cab, ...filas]
+      .map(f => f.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = `matriz-mdp-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+  };
+
+  await cargar();
+
+  // Aqui esta lo que pediste: cualquier cambio hecho por cualquier usuario
+  // llega por el flujo de eventos y vuelve a dibujar el tablero al instante.
+  MDP.vivo.al('riesgos',      cargar);
+  MDP.vivo.al('evaluaciones', cargar);
+})();
+</script>
+</body>
+</html>

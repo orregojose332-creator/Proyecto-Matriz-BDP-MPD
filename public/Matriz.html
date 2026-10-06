@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Matriz · Matriz MDP</title>
+<link rel="icon" href="favicon.svg">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main>
+  <h1>Matriz de riesgos</h1>
+  <p class="sub">Riesgo inherente = probabilidad × impacto. Los controles cargados reducen el residual hasta un 80%.</p>
+  <div id="aviso" class="aviso error" hidden></div>
+
+  <div class="tarjeta" style="margin-bottom:16px">
+    <div class="fila">
+      <div><label for="f-ciclo">Ciclo</label><select id="f-ciclo"></select></div>
+      <div><label for="f-factor">Factor</label><select id="f-factor"><option value="">Todos</option></select></div>
+      <div><label for="f-nivel">Nivel residual</label><select id="f-nivel">
+        <option value="">Todos</option><option>Bajo</option><option>Moderado</option>
+        <option>Alto</option><option>Critico</option></select></div>
+      <div><label for="f-estado">Estado</label><select id="f-estado">
+        <option value="">Todos</option><option>Borrador</option><option>En revision</option>
+        <option>Aprobado</option><option>Cerrado</option></select></div>
+      <div style="align-self:end"><button class="primario" id="btn-nuevo" hidden>Nuevo riesgo</button></div>
+    </div>
+  </div>
+
+  <div class="tarjeta" id="caja-form" hidden style="margin-bottom:16px">
+    <h2 id="form-titulo">Nuevo riesgo</h2>
+    <form id="form">
+      <input type="hidden" id="r-id">
+      <div class="fila">
+        <div class="campo"><label for="r-codigo">Código</label><input id="r-codigo" required maxlength="30"></div>
+        <div class="campo"><label for="r-factor">Factor</label><select id="r-factor" required></select></div>
+        <div class="campo"><label for="r-subfactor">Subfactor</label><select id="r-subfactor"></select></div>
+        <div class="campo"><label for="r-fecha">Fecha de identificación</label><input id="r-fecha" type="date" required></div>
+      </div>
+      <div class="campo"><label for="r-desc">Descripción del riesgo</label>
+        <textarea id="r-desc" rows="2" required maxlength="500"></textarea></div>
+      <div class="fila">
+        <div class="campo"><label for="r-prob">Probabilidad</label><select id="r-prob" required></select></div>
+        <div class="campo"><label for="r-imp">Impacto</label><select id="r-imp" required></select></div>
+        <div class="campo"><label for="r-resp">Responsable</label><select id="r-resp"><option value="">—</option></select></div>
+        <div class="campo"><label>Riesgo inherente</label>
+          <div style="padding-top:7px"><strong id="r-calc" style="font-size:18px">—</strong></div></div>
+      </div>
+      <div class="acciones">
+        <button class="primario" id="btn-guardar">Guardar</button>
+        <button type="button" id="btn-cancelar">Cancelar</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="tarjeta"><div id="tabla"></div></div>
+</main>
+
+<script src="app.js"></script>
+<script>
+'use strict';
+(async () => {
+  const u = await MDP.iniciar({ permiso: 'riesgos.ver' });
+  if (!u) return;
+  const { ui, api, puede } = MDP;
+  let cat = null, lista = [], expandido = null;
+
+  cat = await api('/catalogos');
+
+  // ─── Selectores ──────────────────────────────────────────────────────────
+  const opcs = (arr, v = 'id', t = 'nombre') =>
+    arr.map(o => `<option value="${o[v]}">${ui.esc(o[t])}</option>`).join('');
+
+  document.getElementById('f-ciclo').innerHTML =
+    '<option value="">Todos</option>' + opcs(cat.evaluaciones);
+  document.getElementById('f-factor').innerHTML +=  opcs(cat.factores);
+  document.getElementById('r-factor').innerHTML  =  opcs(cat.factores);
+  document.getElementById('r-resp').innerHTML    += opcs(cat.usuarios);
+
+  const niveles = t => cat.niveles.filter(n => n.tipo === t)
+    .map(n => `<option value="${n.valor}">${n.valor} — ${ui.esc(n.etiqueta)}</option>`).join('');
+  document.getElementById('r-prob').innerHTML = niveles('probabilidad');
+  document.getElementById('r-imp').innerHTML  = niveles('impacto');
+
+  const abierta = cat.evaluaciones.find(e => e.estado === 'Abierta');
+  if (abierta) document.getElementById('f-ciclo').value = abierta.id;
+
+  function subfactores() {
+    const fid = Number(document.getElementById('r-factor').value);
+    document.getElementById('r-subfactor').innerHTML = '<option value="">—</option>' +
+      opcs(cat.subfactores.filter(s => s.factor_id === fid));
+  }
+  document.getElementById('r-factor').onchange = subfactores;
+
+  function recalcular() {
+    const v = Number(document.getElementById('r-prob').value) * Number(document.getElementById('r-imp').value);
+    const nivel = (cat.umbrales.find(x => v <= x.hasta) || cat.umbrales.at(-1)).nivel;
+    document.getElementById('r-calc').innerHTML = `${v} de 25 &nbsp; ${ui.nivel(nivel)}`;
+  }
+  document.getElementById('r-prob').onchange = recalcular;
+  document.getElementById('r-imp').onchange  = recalcular;
+
+  // ─── Tabla ───────────────────────────────────────────────────────────────
+  function pintar() {
+    if (!lista.length) return document.getElementById('tabla').innerHTML =
+      '<div class="vacio">No hay riesgos que coincidan con el filtro.</div>';
+
+    document.getElementById('tabla').innerHTML = `
+      <div style="overflow-x:auto"><table>
+        <thead><tr>
+          <th>Código</th><th>Factor / subfactor</th><th>Descripción</th>
+          <th class="num">P</th><th class="num">I</th>
+          <th class="num">Inher.</th><th class="num">Resid.</th><th>Nivel</th>
+          <th class="num">Ctrl.</th><th>Estado</th><th>Responsable</th><th></th>
+        </tr></thead>
+        <tbody>${lista.map(r => `
+          <tr data-id="${r.id}">
+            <td><strong>${ui.esc(r.codigo)}</strong></td>
+            <td>${ui.esc(r.factor_nombre)}${r.subfactor_nombre ?
+                 `<br><span style="color:var(--ink-muted);font-size:11px">${ui.esc(r.subfactor_nombre)}</span>` : ''}</td>
+            <td>${ui.esc(r.descripcion)}</td>
+            <td class="num">${r.probabilidad}</td>
+            <td class="num">${r.impacto}</td>
+            <td class="num">${ui.num(r.inherente_valor, 1)}</td>
+            <td class="num"><strong>${ui.num(r.residual_valor, 1)}</strong></td>
+            <td>${ui.nivel(r.residual_nivel)}</td>
+            <td class="num">${r.controles_count}</td>
+            <td class="estado">${ui.esc(r.estado)}</td>
+            <td>${ui.esc(r.responsable_nombre || '—')}</td>
+            <td class="acciones" style="justify-content:flex-end">
+              <button data-accion="controles" data-id="${r.id}">Controles</button>
+              ${puede('riesgos.editar') ? `<button data-accion="editar" data-id="${r.id}">Editar</button>` : ''}
+              ${puede('riesgos.aprobar') && r.estado !== 'Aprobado'
+                 ? `<button data-accion="aprobar" data-id="${r.id}">Aprobar</button>` : ''}
+              ${puede('riesgos.eliminar') ? `<button class="peligro" data-accion="borrar" data-id="${r.id}">Borrar</button>` : ''}
+            </td>
+          </tr>
+          <tr data-detalle="${r.id}" hidden><td colspan="12" style="background:var(--plane)"></td></tr>`).join('')}
+        </tbody>
+      </table></div>`;
+    if (expandido) abrirControles(expandido, true);
+  }
+
+  // ─── Panel de controles ──────────────────────────────────────────────────
+  async function abrirControles(id, mantener = false) {
+    const fila = document.querySelector(`tr[data-detalle="${id}"]`);
+    if (!fila) return;
+    if (!mantener && expandido === id) { fila.hidden = true; expandido = null; return; }
+    expandido = id;
+    const r = await api(`/riesgos/${id}`);
+    const celda = fila.firstElementChild;
+    celda.innerHTML = `
+      <div style="padding:10px 4px">
+        <h2 style="margin-bottom:10px">Controles de ${ui.esc(r.codigo)}</h2>
+        ${r.controles.length ? `<table><thead><tr>
+            <th>Descripción</th><th>Tipo</th><th class="num">Efectividad</th><th>Documentado</th><th></th>
+          </tr></thead><tbody>${r.controles.map(c => `<tr>
+            <td>${ui.esc(c.descripcion)}</td><td>${ui.esc(c.tipo)}</td>
+            <td class="num">${c.efectividad} / 5</td>
+            <td>${c.documentado ? 'Sí' : 'No'}</td>
+            <td style="text-align:right">${puede('controles.gestionar')
+              ? `<button class="peligro" data-accion="borrar-control" data-id="${c.id}">Quitar</button>` : ''}</td>
+          </tr>`).join('')}</tbody></table>`
+          : '<p style="color:var(--ink-muted)">Sin controles cargados: el riesgo residual es igual al inherente.</p>'}
+        ${puede('controles.gestionar') ? `
+          <form data-form-control="${id}" class="fila" style="margin-top:12px;align-items:end">
+            <div class="campo" style="margin:0"><label>Descripción del control</label>
+              <input name="descripcion" required maxlength="500"></div>
+            <div class="campo" style="margin:0"><label>Tipo</label><select name="tipo">
+              <option>Preventivo</option><option>Detectivo</option><option>Correctivo</option></select></div>
+            <div class="campo" style="margin:0"><label>Efectividad (1-5)</label>
+              <select name="efectividad">${[1,2,3,4,5].map(v => `<option${v===3?' selected':''}>${v}</option>`).join('')}</select></div>
+            <div class="campo" style="margin:0"><label>
+              <input type="checkbox" name="documentado" style="width:auto"> Documentado</label></div>
+            <div><button class="primario">Agregar control</button></div>
+          </form>` : ''}
+      </div>`;
+    fila.hidden = false;
+  }
+
+  // ─── Acciones de la tabla ────────────────────────────────────────────────
+  document.getElementById('tabla').addEventListener('click', async e => {
+    const b = e.target.closest('button[data-accion]');
+    if (!b) return;
+    const id = b.dataset.id;
+    try {
+      if (b.dataset.accion === 'controles') return abrirControles(Number(id));
+      if (b.dataset.accion === 'editar')    return editar(Number(id));
+      if (b.dataset.accion === 'aprobar') {
+        await api(`/riesgos/${id}/estado`, { method: 'POST', cuerpo: { estado: 'Aprobado' } });
+        return ui.aviso('Riesgo aprobado', 'ok');
+      }
+      if (b.dataset.accion === 'borrar') {
+        const r = lista.find(x => x.id == id);
+        if (!confirm(`¿Eliminar el riesgo ${r?.codigo}? Esta acción no se puede deshacer.`)) return;
+        await api(`/riesgos/${id}`, { method: 'DELETE' });
+        return ui.aviso('Riesgo eliminado', 'ok');
+      }
+      if (b.dataset.accion === 'borrar-control') {
+        await api(`/controles/${id}`, { method: 'DELETE' });
+        return ui.aviso('Control eliminado', 'ok');
+      }
+    } catch (err) { ui.aviso(err.message); }
+  });
+
+  document.getElementById('tabla').addEventListener('submit', async e => {
+    const f = e.target.closest('form[data-form-control]');
+    if (!f) return;
+    e.preventDefault();
+    const d = new FormData(f);
+    try {
+      await api(`/riesgos/${f.dataset.formControl}/controles`, { method: 'POST', cuerpo: {
+        descripcion: d.get('descripcion'), tipo: d.get('tipo'),
+        efectividad: Number(d.get('efectividad')), documentado: d.get('documentado') === 'on' } });
+      ui.aviso('Control agregado: el riesgo residual se recalculó', 'ok');
+    } catch (err) { ui.aviso(err.message); }
+  });
+
+  // ─── Alta y edicion ──────────────────────────────────────────────────────
+  const caja = document.getElementById('caja-form');
+  if (puede('riesgos.crear')) document.getElementById('btn-nuevo').hidden = false;
+
+  function abrirForm(titulo) {
+    document.getElementById('form-titulo').textContent = titulo;
+    caja.hidden = false;
+    caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  document.getElementById('btn-nuevo').onclick = () => {
+    document.getElementById('form').reset();
+    document.getElementById('r-id').value = '';
+    document.getElementById('r-fecha').value = new Date().toISOString().slice(0, 10);
+    subfactores(); recalcular();
+    abrirForm('Nuevo riesgo');
+  };
+  document.getElementById('btn-cancelar').onclick = () => { caja.hidden = true; };
+
+  async function editar(id) {
+    const r = await api(`/riesgos/${id}`);
+    document.getElementById('r-id').value       = r.id;
+    document.getElementById('r-codigo').value   = r.codigo;
+    document.getElementById('r-factor').value   = r.factor_id;
+    subfactores();
+    document.getElementById('r-subfactor').value = r.subfactor_id || '';
+    document.getElementById('r-desc').value      = r.descripcion;
+    document.getElementById('r-prob').value      = r.probabilidad;
+    document.getElementById('r-imp').value       = r.impacto;
+    document.getElementById('r-resp').value      = r.responsable_id || '';
+    document.getElementById('r-fecha').value     = String(r.fecha_identificacion).slice(0, 10);
+    recalcular();
+    abrirForm(`Editar ${r.codigo}`);
+  }
+
+  document.getElementById('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const id = document.getElementById('r-id').value;
+    const ciclo = document.getElementById('f-ciclo').value || cat.evaluaciones[0]?.id;
+    if (!ciclo) return ui.aviso('No hay ningún ciclo de evaluación creado');
+    const cuerpo = {
+      evaluacion_id: Number(ciclo),
+      codigo:        document.getElementById('r-codigo').value.trim(),
+      factor_id:     Number(document.getElementById('r-factor').value),
+      subfactor_id:  document.getElementById('r-subfactor').value || null,
+      descripcion:   document.getElementById('r-desc').value.trim(),
+      probabilidad:  Number(document.getElementById('r-prob').value),
+      impacto:       Number(document.getElementById('r-imp').value),
+      responsable_id: document.getElementById('r-resp').value || null,
+      fecha_identificacion: document.getElementById('r-fecha').value,
+    };
+    try {
+      if (id) await api(`/riesgos/${id}`, { method: 'PUT',  cuerpo });
+      else    await api('/riesgos',       { method: 'POST', cuerpo });
+      caja.hidden = true;
+      ui.aviso(id ? 'Riesgo actualizado' : 'Riesgo creado', 'ok');
+    } catch (err) { ui.aviso(err.message); }
+  });
+
+  // ─── Carga y refresco en vivo ────────────────────────────────────────────
+  async function cargar() {
+    const q = new URLSearchParams();
+    for (const [campo, clave] of [['f-ciclo','evaluacion'], ['f-factor','factor'],
+                                  ['f-nivel','nivel'], ['f-estado','estado']]) {
+      const v = document.getElementById(campo).value;
+      if (v) q.set(clave, v);
+    }
+    try { lista = await api(`/riesgos?${q}`); pintar(); }
+    catch (e) { ui.aviso(e.message); }
+  }
+
+  for (const id of ['f-ciclo', 'f-factor', 'f-nivel', 'f-estado'])
+    document.getElementById(id).onchange = cargar;
+
+  subfactores(); recalcular();
+  await cargar();
+  MDP.vivo.al('riesgos', cargar);   // otro usuario carga un riesgo y aparece solo
+})();
+</script>
+</body>
+</html>

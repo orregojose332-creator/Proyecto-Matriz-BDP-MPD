@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auditoría · Matriz MDP</title><link rel="icon" href="favicon.svg">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main>
+  <h1>Bitácora de auditoría</h1>
+  <p class="sub">Registro de quién hizo qué y cuándo. Es la documentación de respaldo que debe quedar disponible para la supervisión.</p>
+  <div id="aviso" class="aviso error" hidden></div>
+  <div class="tarjeta"><div id="tabla"></div></div>
+</main>
+
+<script src="app.js"></script>
+<script>
+'use strict';
+(async () => {
+  const u = await MDP.iniciar({ permiso: 'auditoria.ver' });
+  if (!u) return;
+  const { ui, api } = MDP;
+
+  function fechaHora(v) {
+    const d = new Date(String(v).replace(' ', 'T'));
+    return isNaN(d) ? String(v) : d.toLocaleString('es-PY');
+  }
+
+  async function cargar() {
+    try {
+      const filas = await api('/auditoria?limite=300');
+      document.getElementById('tabla').innerHTML = !filas.length
+        ? '<div class="vacio">Sin registros.</div>'
+        : `<div style="overflow-x:auto"><table>
+            <thead><tr><th>Fecha y hora</th><th>Evento</th><th>Entidad</th>
+              <th>Usuario</th><th>Cargo</th><th>IP</th><th>Detalle</th></tr></thead>
+            <tbody>${filas.map(f => `<tr>
+              <td style="white-space:nowrap">${fechaHora(f.created_at)}</td>
+              <td><strong>${ui.esc(f.evento)}</strong></td>
+              <td>${ui.esc(f.entidad || '—')}${f.entidad_id ? ' #' + f.entidad_id : ''}</td>
+              <td>${ui.esc(f.usuario_nombre || '—')}</td>
+              <td>${ui.esc(f.cargo || '—')}</td>
+              <td style="color:var(--ink-muted)">${ui.esc(f.ip || '—')}</td>
+              <td style="color:var(--ink-muted);font-size:11px">${ui.esc(
+                 f.detalle_json ? (typeof f.detalle_json === 'string'
+                   ? f.detalle_json : JSON.stringify(f.detalle_json)) : '')}</td>
+            </tr>`).join('')}</tbody></table></div>`;
+    } catch (e) { ui.aviso(e.message); }
+  }
+  await cargar();
+  for (const ev of ['riesgos', 'usuarios', 'cargos']) MDP.vivo.al(ev, cargar);
+})();
+</script>
+</body>
+</html>

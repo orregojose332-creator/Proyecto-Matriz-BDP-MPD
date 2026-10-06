@@ -1,0 +1,20 @@
+{
+  "name": "matriz-mdp",
+  "version": "1.0.0",
+  "description": "Matriz de riesgos LD/FT (SEPRELAD) con usuarios, cargos, permisos, graficos y actualizacion en vivo",
+  "main": "server.js",
+  "type": "commonjs",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server.js",
+    "crear-admin": "node scripts/crear-admin.js",
+    "init-db": "node scripts/init-db.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "jsonwebtoken": "^9.0.3",
+    "mysql2": "^3.22.4"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

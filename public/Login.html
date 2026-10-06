@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ingresar · Matriz MDP</title>
+<link rel="icon" href="favicon.svg">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main class="login-caja">
+  <div class="tarjeta">
+    <h1>Matriz MDP</h1>
+    <p class="sub">Matriz de riesgos LD/FT</p>
+    <div id="aviso" class="aviso error" hidden></div>
+    <form id="form">
+      <div class="campo">
+        <label for="usuario">Usuario</label>
+        <input id="usuario" name="usuario" autocomplete="username" required autofocus>
+      </div>
+      <div class="campo">
+        <label for="clave">Contraseña</label>
+        <input id="clave" name="clave" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="primario" style="width:100%" id="btn">Ingresar</button>
+    </form>
+  </div>
+</main>
+
+<script>
+'use strict';
+const parametros = new URLSearchParams(location.search);
+const aviso = document.getElementById('aviso');
+const btn   = document.getElementById('btn');
+
+if (parametros.get('motivo') === 'expirada') {
+  aviso.textContent = 'Su sesión expiró. Vuelva a ingresar.';
+  aviso.hidden = false;
+}
+
+// Si ya hay sesion valida, no mostrar el formulario.
+localStorage.removeItem('mdp_usuario');
+
+document.getElementById('form').addEventListener('submit', async e => {
+  e.preventDefault();
+  aviso.hidden = true;
+  btn.disabled = true;
+  btn.textContent = 'Verificando…';
+  try {
+    const r = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: document.getElementById('usuario').value.trim(),
+        password: document.getElementById('clave').value,
+      }),
+    });
+    const datos = await r.json();
+    if (!r.ok) throw new Error(datos.error || 'No se pudo ingresar');
+
+    localStorage.setItem('mdp_token', datos.token);
+    localStorage.setItem('mdp_usuario', JSON.stringify(datos.usuario));
+    document.cookie = `mdp_token=${encodeURIComponent(datos.token)}; path=/; SameSite=Lax`;
+
+    // Volver a donde queria entrar, si corresponde y es una pagina del sitio.
+    const volver = parametros.get('volver');
+    const destino = volver && /^[A-Za-z0-9_-]+\.html$/.test(volver) ? volver : 'Reportes.html';
+    location.replace('/' + destino);
+  } catch (e) {
+    aviso.textContent = e.message;
+    aviso.hidden = false;
+    document.getElementById('clave').value = '';
+    document.getElementById('clave').focus();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Ingresar';
+  }
+});
+</script>
+</body>
+</html>

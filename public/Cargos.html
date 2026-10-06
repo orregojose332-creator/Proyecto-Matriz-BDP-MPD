@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cargos · Matriz MDP</title><link rel="icon" href="favicon.svg">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main>
+  <h1>Cargos y permisos</h1>
+  <p class="sub">Cada cargo habilita un conjunto de acciones. El servidor verifica estos permisos en cada petición, así que ocultar un botón no es la única barrera.</p>
+  <div id="aviso" class="aviso error" hidden></div>
+
+  <div class="tarjeta" style="margin-bottom:16px">
+    <h2>Nuevo cargo</h2>
+    <form id="form-cargo" class="fila" style="align-items:end">
+      <div class="campo" style="margin:0"><label for="c-nombre">Nombre</label>
+        <input id="c-nombre" required maxlength="60"></div>
+      <div class="campo" style="margin:0"><label for="c-desc">Descripción</label>
+        <input id="c-desc" maxlength="255"></div>
+      <div><button class="primario">Crear cargo</button></div>
+    </form>
+  </div>
+
+  <div id="cargos" class="rejilla" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))"></div>
+</main>
+
+<script src="app.js"></script>
+<script>
+'use strict';
+(async () => {
+  const u = await MDP.iniciar({ permiso: 'cargos.gestionar' });
+  if (!u) return;
+  const { ui, api } = MDP;
+  let cargos = [], permisos = [];
+
+  permisos = await api('/permisos');
+
+  function pintar() {
+    document.getElementById('cargos').innerHTML = cargos.map(c => {
+      const modulos = [...new Set(permisos.map(p => p.modulo))];
+      return `<div class="tarjeta">
+        <h2>${ui.esc(c.nombre)}${c.es_sistema ? ' <span class="estado">· cargo de sistema</span>' : ''}</h2>
+        <p class="sub" style="font-size:12px;margin-bottom:12px">
+          ${ui.esc(c.descripcion || '')}<br>
+          <strong>${c.usuarios_count}</strong> usuario(s) con este cargo</p>
+        <form data-cargo="${c.id}">
+          ${modulos.map(m => `
+            <fieldset style="border:1px solid var(--grid);border-radius:8px;padding:10px;margin-bottom:10px">
+              <legend style="font-size:11px;color:var(--ink-2);text-transform:uppercase;letter-spacing:.4px;padding:0 6px">${ui.esc(m)}</legend>
+              ${permisos.filter(p => p.modulo === m).map(p => `
+                <label style="display:flex;gap:8px;align-items:flex-start;margin-bottom:5px;font-size:13px;color:var(--ink-1);font-weight:400">
+                  <input type="checkbox" value="${p.clave}" style="width:auto;margin-top:3px"
+                    ${c.permisos.includes(p.clave) ? 'checked' : ''}>
+                  <span>${ui.esc(p.descripcion)}<br>
+                    <code style="font-size:11px;color:var(--ink-muted)">${ui.esc(p.clave)}</code></span>
+                </label>`).join('')}
+            </fieldset>`).join('')}
+          <button class="primario">Guardar permisos</button>
+        </form>
+      </div>`;
+    }).join('');
+  }
+
+  document.getElementById('cargos').addEventListener('submit', async e => {
+    e.preventDefault();
+    const f = e.target.closest('form[data-cargo]');
+    if (!f) return;
+    const claves = [...f.querySelectorAll('input[type=checkbox]:checked')].map(i => i.value);
+    try {
+      await api(`/cargos/${f.dataset.cargo}/permisos`, { method: 'PUT', cuerpo: { permisos: claves } });
+      ui.aviso('Permisos actualizados. Aplican de inmediato, sin volver a iniciar sesión.', 'ok');
+    } catch (err) { ui.aviso(err.message); }
+  });
+
+  document.getElementById('form-cargo').addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      await api('/cargos', { method: 'POST', cuerpo: {
+        nombre: document.getElementById('c-nombre').value.trim(),
+        descripcion: document.getElementById('c-desc').value.trim() } });
+      e.target.reset();
+      ui.aviso('Cargo creado. Asígnele permisos abajo.', 'ok');
+    } catch (err) { ui.aviso(err.message); }
+  });
+
+  async function cargar() {
+    try { cargos = await api('/cargos'); pintar(); } catch (e) { ui.aviso(e.message); }
+  }
+  await cargar();
+  MDP.vivo.al('cargos', cargar);
+})();
+</script>
+</body>
+</html>

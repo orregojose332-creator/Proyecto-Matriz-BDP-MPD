@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Usuarios · Matriz MDP</title><link rel="icon" href="favicon.svg">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main>
+  <h1>Usuarios</h1>
+  <p class="sub">Las contraseñas se guardan solo como hash bcrypt: nadie, ni el administrador, puede leerlas. Para que alguien recupere el acceso, se le asigna una nueva.</p>
+  <div id="aviso" class="aviso error" hidden></div>
+
+  <div class="acciones" style="margin-bottom:16px"><button class="primario" id="btn-nuevo">Nuevo usuario</button></div>
+
+  <div class="tarjeta" id="caja-form" hidden style="margin-bottom:16px">
+    <h2 id="form-titulo">Nuevo usuario</h2>
+    <form id="form">
+      <input type="hidden" id="u-id">
+      <div class="fila">
+        <div class="campo"><label for="u-nombre">Nombre completo</label><input id="u-nombre" required maxlength="120"></div>
+        <div class="campo"><label for="u-username">Usuario</label><input id="u-username" required maxlength="60" autocomplete="off"></div>
+        <div class="campo"><label for="u-email">Correo</label><input id="u-email" type="email" required maxlength="120"></div>
+        <div class="campo"><label for="u-cargo">Cargo</label><select id="u-cargo" required></select></div>
+      </div>
+      <div class="fila">
+        <div class="campo"><label for="u-pass">Contraseña <span id="pass-nota"></span></label>
+          <input id="u-pass" type="password" minlength="8" autocomplete="new-password"></div>
+        <div class="campo"><label for="u-activo">Estado</label>
+          <select id="u-activo"><option value="1">Activo</option><option value="0">Inactivo</option></select></div>
+      </div>
+      <div class="acciones">
+        <button class="primario">Guardar</button>
+        <button type="button" id="btn-cancelar">Cancelar</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="tarjeta"><div id="tabla"></div></div>
+</main>
+
+<script src="app.js"></script>
+<script>
+'use strict';
+(async () => {
+  const u = await MDP.iniciar({ permiso: 'usuarios.gestionar' });
+  if (!u) return;
+  const { ui, api } = MDP;
+  let cargos = [], lista = [];
+
+  cargos = await api('/cargos');
+  document.getElementById('u-cargo').innerHTML =
+    cargos.map(c => `<option value="${c.id}">${ui.esc(c.nombre)}</option>`).join('');
+
+  function pintar() {
+    document.getElementById('tabla').innerHTML = `
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Cargo</th>
+          <th>Estado</th><th>Último acceso</th><th></th></tr></thead>
+        <tbody>${lista.map(x => `<tr>
+          <td><strong>${ui.esc(x.nombre)}</strong>${x.id === u.id ? ' <span style="color:var(--ink-muted)">(usted)</span>' : ''}</td>
+          <td>${ui.esc(x.username)}</td>
+          <td>${ui.esc(x.email)}</td>
+          <td>${ui.esc(x.cargo)}</td>
+          <td>${x.activo
+              ? (x.bloqueado_hasta && new Date(x.bloqueado_hasta) > new Date()
+                 ? '<span class="nivel" data-n="Alto">Bloqueado</span>'
+                 : '<span class="nivel" data-n="Bajo">Activo</span>')
+              : '<span class="estado">Inactivo</span>'}</td>
+          <td>${ui.fecha(x.ultimo_acceso)}</td>
+          <td style="text-align:right"><button data-id="${x.id}">Editar</button></td>
+        </tr>`).join('')}</tbody>
+      </table></div>`;
+  }
+
+  const caja = document.getElementById('caja-form');
+  document.getElementById('btn-cancelar').onclick = () => { caja.hidden = true; };
+
+  document.getElementById('btn-nuevo').onclick = () => {
+    document.getElementById('form').reset();
+    document.getElementById('u-id').value = '';
+    document.getElementById('u-pass').required = true;
+    document.getElementById('pass-nota').textContent = '(mínimo 8 caracteres)';
+    document.getElementById('form-titulo').textContent = 'Nuevo usuario';
+    caja.hidden = false;
+  };
+
+  document.getElementById('tabla').addEventListener('click', e => {
+    const b = e.target.closest('button[data-id]');
+    if (!b) return;
+    const x = lista.find(l => l.id == b.dataset.id);
+    document.getElementById('u-id').value       = x.id;
+    document.getElementById('u-nombre').value   = x.nombre;
+    document.getElementById('u-username').value = x.username;
+    document.getElementById('u-email').value    = x.email;
+    document.getElementById('u-cargo').value    = x.cargo_id;
+    document.getElementById('u-activo').value   = x.activo ? '1' : '0';
+    document.getElementById('u-pass').value     = '';
+    document.getElementById('u-pass').required  = false;
+    document.getElementById('pass-nota').textContent = '(dejar vacío para no cambiarla)';
+    document.getElementById('form-titulo').textContent = `Editar ${x.nombre}`;
+    caja.hidden = false;
+    caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+
+  document.getElementById('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const id = document.getElementById('u-id').value;
+    const cuerpo = {
+      nombre:   document.getElementById('u-nombre').value.trim(),
+      username: document.getElementById('u-username').value.trim(),
+      email:    document.getElementById('u-email').value.trim(),
+      cargo_id: Number(document.getElementById('u-cargo').value),
+      activo:   document.getElementById('u-activo').value === '1',
+    };
+    const pass = document.getElementById('u-pass').value;
+    if (pass) cuerpo.password = pass;
+    try {
+      if (id) await api(`/usuarios/${id}`, { method: 'PUT',  cuerpo });
+      else    await api('/usuarios',       { method: 'POST', cuerpo });
+      caja.hidden = true;
+      ui.aviso(id ? 'Usuario actualizado' : 'Usuario creado', 'ok');
+    } catch (err) { ui.aviso(err.message); }
+  });
+
+  async function cargar() {
+    try { lista = await api('/usuarios'); pintar(); } catch (e) { ui.aviso(e.message); }
+  }
+  await cargar();
+  MDP.vivo.al('usuarios', cargar);
+})();
+</script>
+</body>
+</html>
