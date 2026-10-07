@@ -200,9 +200,15 @@ function sseHandler(req, res) {
 // ── Consultas reutilizadas ──────────────────────────────────────────────────
 const SELECT_RIESGO = `
   SELECT r.*, f.nombre AS factor_nombre, f.clave AS factor_clave,
+         f.descripcion AS factor_descripcion,
          sf.nombre AS subfactor_nombre,
+         sf.orientacion AS subfactor_orientacion,
+         sf.ejemplos   AS subfactor_ejemplos,
          ur.nombre AS responsable_nombre,
-         (SELECT COUNT(*) FROM controles c WHERE c.riesgo_id = r.id) AS controles_count
+         (SELECT COUNT(*) FROM controles c WHERE c.riesgo_id = r.id) AS controles_count,
+         (SELECT COUNT(*) FROM tareas t WHERE t.riesgo_id = r.id) AS tareas_count,
+         (SELECT COUNT(*) FROM tareas t WHERE t.riesgo_id = r.id
+            AND t.estado NOT IN ('Completada','Cancelada')) AS tareas_abiertas
     FROM riesgos r
     JOIN factores f      ON f.id = r.factor_id
     LEFT JOIN subfactores sf ON sf.id = r.subfactor_id
@@ -287,12 +293,25 @@ async function api(req, res, url) {
   if (rec[0] === 'catalogos' && metodo === 'GET') {
     if (!sesion(req)) return err(res, 'No autenticado', 401);
     const [factores]    = await DB.query('SELECT * FROM factores ORDER BY orden');
-    const [subfactores] = await DB.query('SELECT * FROM subfactores WHERE activo=1 ORDER BY factor_id, nombre');
+    const [subfactores] = await DB.query(
+      'SELECT * FROM subfactores WHERE activo=1 ORDER BY factor_id, nombre');
     const [niveles]     = await DB.query('SELECT * FROM niveles ORDER BY tipo, valor');
     const [evaluaciones]= await DB.query('SELECT * FROM evaluaciones ORDER BY periodo_desde DESC');
     const [usuarios]    = await DB.query('SELECT id, nombre FROM usuarios WHERE activo=1 ORDER BY nombre');
     return json(res, { factores, subfactores, niveles, evaluaciones, usuarios,
                        umbrales: UMBRALES, mitigacionMaxima: MITIGACION_MAXIMA });
+  }
+
+  if (rec[0] === 'subfactores' && rec.length === 2 && metodo === 'PUT') {
+    const s = await exigir(req, res, 'catalogos.gestionar'); if (!s) return;
+    const b = await body(req);
+    const [r] = await DB.query(
+      'UPDATE subfactores SET nombre=?, descripcion=?, orientacion=?, ejemplos=? WHERE id=?',
+      [b.nombre, b.descripcion || null, b.orientacion || null, b.ejemplos || null, rec[1]]);
+    if (!r.affectedRows) return err(res, 'Subfactor no encontrado', 404);
+    await auditar('subfactor_editado', { entidad: 'subfactor', entidadId: Number(rec[1]), s, req });
+    emitir('riesgos', { accion: 'catalogo' });
+    return json(res, { ok: true });
   }
 
   // ---- Riesgos -------------------------------------------------------------
@@ -328,10 +347,11 @@ async function api(req, res, url) {
     try {
       const [r] = await DB.query(
         `INSERT INTO riesgos (evaluacion_id, codigo, factor_id, subfactor_id, descripcion,
-            probabilidad, impacto, inherente_valor, inherente_nivel, residual_valor, residual_nivel,
-            estado, responsable_id, fecha_identificacion, creado_por)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            contexto, referencia, probabilidad, impacto, inherente_valor, inherente_nivel,
+            residual_valor, residual_nivel, estado, responsable_id, fecha_identificacion, creado_por)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [b.evaluacion_id, b.codigo, b.factor_id, b.subfactor_id || null, b.descripcion,
+         b.contexto || null, b.referencia || null,
          prob, imp, calc.inherente_valor, calc.inherente_nivel, calc.residual_valor,
          calc.residual_nivel, 'Borrador', b.responsable_id || null,
          b.fecha_identificacion || new Date().toISOString().slice(0, 10), s.id]);
@@ -352,13 +372,23 @@ async function api(req, res, url) {
     if (actual.estado === 'Cerrado' && !s.permisos.includes('riesgos.aprobar'))
       return err(res, 'El riesgo esta cerrado; solo un supervisor puede reabrirlo', 409);
 
-    await DB.query(
-      `UPDATE riesgos SET codigo=?, factor_id=?, subfactor_id=?, descripcion=?,
-              probabilidad=?, impacto=?, responsable_id=?, fecha_identificacion=?
-         WHERE id=?`,
-      [b.codigo, b.factor_id, b.subfactor_id || null, b.descripcion,
-       Number(b.probabilidad), Number(b.impacto), b.responsable_id || null,
-       b.fecha_identificacion, rec[1]]);
+    try {
+      await DB.query(
+        `UPDATE riesgos SET codigo=?, factor_id=?, subfactor_id=?, descripcion=?,
+                contexto=?, referencia=?, probabilidad=?, impacto=?,
+                responsable_id=?, fecha_identificacion=?
+           WHERE id=?`,
+        [b.codigo, b.factor_id, b.subfactor_id || null, b.descripcion,
+         b.contexto || null, b.referencia || null,
+         Number(b.probabilidad), Number(b.impacto), b.responsable_id || null,
+         b.fecha_identificacion, rec[1]]);
+    } catch (e) {
+      // El alta ya devolvia 409 ante un codigo repetido; la edicion caia en el
+      // manejador generico y respondia 500, sin decirle al usuario que arreglar.
+      if (e.code === 'ER_DUP_ENTRY')
+        return err(res, 'Ya existe otro riesgo con ese codigo en el ciclo', 409);
+      throw e;
+    }
     const calc = await recalcular(rec[1]);
     await auditar('riesgo_editado', { entidad: 'riesgo', entidadId: Number(rec[1]), s, req });
     emitir('riesgos', { accion: 'edicion', id: Number(rec[1]) });

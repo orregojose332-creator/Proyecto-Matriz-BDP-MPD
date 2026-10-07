@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Riesgos · Matriz MDP</title>
+<link rel="icon" href="favicon.svg">
+<link rel="stylesheet" href="app.css">
+<style>
+.fichas { display: grid; gap: 14px; }
+.ficha { background: var(--surface-1); border: 1px solid var(--borde);
+         border-radius: var(--radio); overflow: hidden; }
+/* Franja lateral con el nivel residual: se ve el estado del riesgo sin leer. */
+.ficha { border-left: 4px solid var(--axis); }
+.ficha[data-n="Bajo"]     { border-left-color: var(--nivel-bajo); }
+.ficha[data-n="Moderado"] { border-left-color: var(--nivel-moderado); }
+.ficha[data-n="Alto"]     { border-left-color: var(--nivel-alto); }
+.ficha[data-n="Critico"]  { border-left-color: var(--nivel-critico); }
+
+.ficha .cuerpo { padding: 16px 18px; }
+.ficha .alto { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.ficha .codigo { font-weight: 700; font-size: 13px; color: var(--ink-2);
+                 font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ficha h3 { margin: 2px 0 6px; font-size: 15px; font-weight: 600; line-height: 1.4;
+            flex: 1; min-width: 200px; }
+.ficha .meta { font-size: 12px; color: var(--ink-muted); display: flex;
+               gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+.ficha .cifras { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px;
+                 padding-top: 12px; border-top: 1px solid var(--grid); }
+.cifra .et { font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px; color: var(--ink-muted); }
+.cifra .v  { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ficha .pie { display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+              padding: 10px 18px; background: var(--plane); border-top: 1px solid var(--grid); }
+
+.info { padding: 0 18px 18px; border-top: 1px solid var(--grid); }
+.info h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .4px;
+           color: var(--ink-2); margin: 16px 0 6px; }
+.info p { margin: 0; font-size: 13.5px; line-height: 1.6; }
+.info ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.7; color: var(--ink-2); }
+.info .caja { background: var(--plane); border-radius: 8px; padding: 12px 14px; }
+.sin-dato { color: var(--ink-muted); font-style: italic; font-size: 13px; }
+.filtros { display: grid; gap: 12px;
+           grid-template-columns: repeat(auto-fit, minmax(min(170px,100%), 1fr)); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Riesgos</h1>
+  <p class="sub">Cada riesgo identificado, con su explicación, sus controles y las tareas que tiene abiertas.</p>
+  <div id="aviso" class="aviso error" hidden></div>
+
+  <div class="tarjeta" style="margin-bottom:16px">
+    <div class="filtros">
+      <div><label for="f-factor">Factor</label><select id="f-factor"><option value="">Todos</option></select></div>
+      <div><label for="f-nivel">Nivel residual</label><select id="f-nivel">
+        <option value="">Todos</option><option>Bajo</option><option>Moderado</option>
+        <option>Alto</option><option>Critico</option></select></div>
+      <div><label for="f-estado">Estado</label><select id="f-estado">
+        <option value="">Todos</option><option>Borrador</option><option>En revision</option>
+        <option>Aprobado</option><option>Cerrado</option></select></div>
+      <div><label for="f-buscar">Buscar</label><input id="f-buscar" placeholder="código o descripción"></div>
+      <div style="align-self:end"><button class="primario" id="btn-nuevo" hidden style="width:100%">Nuevo riesgo</button></div>
+    </div>
+  </div>
+
+  <div class="tarjeta" id="caja-form" hidden style="margin-bottom:16px">
+    <h2 id="form-titulo">Nuevo riesgo</h2>
+    <form id="form">
+      <input type="hidden" id="r-id">
+      <div class="fila">
+        <div class="campo"><label for="r-codigo">Código</label><input id="r-codigo" required maxlength="30"></div>
+        <div class="campo"><label for="r-factor">Factor</label><select id="r-factor" required></select></div>
+        <div class="campo"><label for="r-subfactor">Subfactor</label><select id="r-subfactor"></select></div>
+        <div class="campo"><label for="r-fecha">Fecha de identificación</label><input id="r-fecha" type="date" required></div>
+      </div>
+      <div class="campo"><label for="r-desc">Descripción breve</label>
+        <textarea id="r-desc" rows="2" required maxlength="500"
+          placeholder="Qué puede pasar, en una o dos líneas"></textarea></div>
+      <div class="campo"><label for="r-contexto">Contexto (aparece en «+ info»)</label>
+        <textarea id="r-contexto" rows="3" maxlength="2000"
+          placeholder="Dónde se observó en la entidad, a qué área o proceso afecta, qué lo motivó"></textarea></div>
+      <div class="fila">
+        <div class="campo"><label for="r-prob">Probabilidad</label><select id="r-prob" required></select></div>
+        <div class="campo"><label for="r-imp">Impacto</label><select id="r-imp" required></select></div>
+        <div class="campo"><label for="r-resp">Responsable</label><select id="r-resp"><option value="">—</option></select></div>
+        <div class="campo"><label>Riesgo inherente</label>
+          <div style="padding-top:7px"><strong id="r-calc" style="font-size:18px">—</strong></div></div>
+      </div>
+      <div class="campo"><label for="r-ref">Referencia normativa o procedimiento</label>
+        <input id="r-ref" maxlength="200" placeholder="Resolución, manual interno, artículo"></div>
+      <div class="acciones">
+        <button class="primario">Guardar</button>
+        <button type="button" id="btn-cancelar">Cancelar</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="tarjeta" id="caja-tarea" hidden style="margin-bottom:16px">
+    <h2 id="tarea-titulo">Nueva tarea</h2>
+    <form id="form-tarea">
+      <input type="hidden" id="t-riesgo">
+      <div class="fila">
+        <div class="campo"><label for="t-titulo">Título</label><input id="t-titulo" required maxlength="200"></div>
+        <div class="campo"><label for="t-tipo">Tipo</label>
+          <select id="t-tipo"><option>Control</option><option>Tarea</option></select></div>
+        <div class="campo"><label for="t-prioridad">Prioridad</label>
+          <select id="t-prioridad"><option>Baja</option><option selected>Media</option><option>Alta</option></select></div>
+      </div>
+      <div class="fila">
+        <div class="campo"><label for="t-fecha">Fecha programada</label><input id="t-fecha" type="date" required></div>
+        <div class="campo"><label for="t-limite">Fecha límite</label><input id="t-limite" type="date"></div>
+        <div class="campo"><label for="t-resp">Responsable</label><select id="t-resp"><option value="">—</option></select></div>
+      </div>
+      <div class="campo"><label for="t-desc">Descripción</label>
+        <textarea id="t-desc" rows="2" maxlength="1000"></textarea></div>
+      <div class="acciones">
+        <button class="primario">Agendar tarea</button>
+        <button type="button" id="btn-cancelar-tarea">Cancelar</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="fichas" id="fichas"></div>
+</main>
+
+<script src="app.js"></script>
+<script>
+'use strict';
+(async () => {
+  const u = await MDP.iniciar({ permiso: 'riesgos.ver' });
+  if (!u) return;
+  const { ui, api, puede } = MDP;
+
+  let cat = null, lista = [], abiertos = new Set(), detalles = {};
+
+  cat = await api('/catalogos');
+  const opcs = (arr, v = 'id', t = 'nombre') =>
+    arr.map(o => `<option value="${o[v]}">${ui.esc(o[t])}</option>`).join('');
+  document.getElementById('f-factor').innerHTML += opcs(cat.factores);
+  document.getElementById('r-factor').innerHTML  = opcs(cat.factores);
+  document.getElementById('r-resp').innerHTML   += opcs(cat.usuarios);
+  document.getElementById('t-resp').innerHTML   += opcs(cat.usuarios);
+  const niveles = t => cat.niveles.filter(n => n.tipo === t)
+    .map(n => `<option value="${n.valor}">${n.valor} — ${ui.esc(n.etiqueta)}</option>`).join('');
+  document.getElementById('r-prob').innerHTML = niveles('probabilidad');
+  document.getElementById('r-imp').innerHTML  = niveles('impacto');
+
+  function subfactores() {
+    const fid = Number(document.getElementById('r-factor').value);
+    document.getElementById('r-subfactor').innerHTML = '<option value="">—</option>' +
+      opcs(cat.subfactores.filter(s => s.factor_id === fid));
+  }
+  function recalcular() {
+    const v = Number(document.getElementById('r-prob').value) * Number(document.getElementById('r-imp').value);
+    const n = (cat.umbrales.find(x => v <= x.hasta) || cat.umbrales.at(-1)).nivel;
+    document.getElementById('r-calc').innerHTML = `${v} de 25 &nbsp; ${ui.nivel(n)}`;
+  }
+  document.getElementById('r-factor').onchange = subfactores;
+  document.getElementById('r-prob').onchange = recalcular;
+  document.getElementById('r-imp').onchange  = recalcular;
+
+  // ─── Ficha de cada riesgo ────────────────────────────────────────────────
+  function ficha(r) {
+    const abierta = abiertos.has(r.id);
+    const d = detalles[r.id];
+    return `
+    <article class="ficha" data-n="${ui.esc(r.residual_nivel)}" data-id="${r.id}">
+      <div class="cuerpo">
+        <div class="alto">
+          <span class="codigo">${ui.esc(r.codigo)}</span>
+          <h3>${ui.esc(r.descripcion)}</h3>
+          ${ui.nivel(r.residual_nivel)}
+        </div>
+        <div class="meta">
+          <span>${ui.esc(r.factor_nombre)}${r.subfactor_nombre ? ' · ' + ui.esc(r.subfactor_nombre) : ''}</span>
+          <span>Estado: ${ui.esc(r.estado)}</span>
+          <span>Responsable: ${ui.esc(r.responsable_nombre || 'sin asignar')}</span>
+          ${Number(r.tareas_abiertas) ? `<span style="color:var(--nivel-alto);font-weight:600">${r.tareas_abiertas} tarea(s) abierta(s)</span>` : ''}
+        </div>
+        <div class="cifras">
+          <div class="cifra"><div class="et">Probabilidad</div><div class="v">${r.probabilidad} / 5</div></div>
+          <div class="cifra"><div class="et">Impacto</div><div class="v">${r.impacto} / 5</div></div>
+          <div class="cifra"><div class="et">Inherente</div><div class="v">${ui.num(r.inherente_valor, 1)}</div></div>
+          <div class="cifra"><div class="et">Residual</div><div class="v">${ui.num(r.residual_valor, 1)}</div></div>
+          <div class="cifra"><div class="et">Controles</div><div class="v">${r.controles_count}</div></div>
+          <div class="cifra"><div class="et">Tareas</div><div class="v">${r.tareas_count}</div></div>
+        </div>
+      </div>
+      ${abierta ? `<div class="info">${d ? panelInfo(d) : '<p class="sin-dato">Cargando…</p>'}</div>` : ''}
+      <div class="pie">
+        <button class="accion" data-info="${r.id}">${abierta ? '− Menos' : '+ Info'}</button>
+        ${puede('riesgos.editar') ? `<button class="accion" data-editar="${r.id}">Editar</button>` : ''}
+        ${puede('tareas.crear')   ? `<button class="accion primario" data-tarea="${r.id}">+ Tarea</button>` : ''}
+        ${puede('riesgos.aprobar') && r.estado !== 'Aprobado'
+          ? `<button class="accion" data-aprobar="${r.id}">Aprobar</button>` : ''}
+      </div>
+    </article>`;
+  }
+
+  /** El "+ info" junta tres cosas: qué es este tipo de riesgo, qué casos
+   *  abarca, y qué pasa con este riesgo en particular. */
+  function panelInfo(d) {
+    const ejemplos = (d.subfactor_ejemplos || '').split('\n').filter(Boolean);
+    return `
+      <h4>Qué significa este tipo de riesgo</h4>
+      ${d.subfactor_orientacion
+        ? `<div class="caja"><p>${ui.esc(d.subfactor_orientacion)}</p></div>`
+        : `<p class="sin-dato">Este riesgo no tiene subfactor asignado, así que no hay
+           orientación de categoría. Se agrega desde la pantalla de catálogos.</p>`}
+
+      ${ejemplos.length ? `<h4>Casos típicos</h4>
+        <ul>${ejemplos.map(e => `<li>${ui.esc(e)}</li>`).join('')}</ul>` : ''}
+
+      <h4>Situación en la entidad</h4>
+      ${d.contexto ? `<p>${ui.esc(d.contexto)}</p>`
+        : '<p class="sin-dato">Sin contexto cargado. Se agrega con «Editar».</p>'}
+      ${d.referencia ? `<p style="margin-top:8px;font-size:12.5px;color:var(--ink-muted)">
+        Referencia: ${ui.esc(d.referencia)}</p>` : ''}
+
+      <h4>Cómo se calculó</h4>
+      <p>Probabilidad ${d.probabilidad} × impacto ${d.impacto} =
+         <strong>${ui.num(d.inherente_valor, 1)}</strong> de 25 (${ui.esc(d.inherente_nivel)}).
+         ${d.controles.length
+            ? `Los ${d.controles.length} control(es) cargados lo bajan a
+               <strong>${ui.num(d.residual_valor, 1)}</strong> (${ui.esc(d.residual_nivel)}).`
+            : 'Sin controles cargados, el residual es igual al inherente.'}</p>
+
+      <h4>Controles</h4>
+      ${d.controles.length ? `<ul>${d.controles.map(c =>
+          `<li>${ui.esc(c.descripcion)} — <em>${ui.esc(c.tipo)}</em>,
+           efectividad ${c.efectividad}/5${c.documentado ? ', documentado' : ''}</li>`).join('')}</ul>`
+        : '<p class="sin-dato">Ninguno. El riesgo está sin mitigar.</p>'}
+
+      ${d.tareas_count ? `<h4>Tareas</h4>
+        <p>${d.tareas_count} tarea(s) asociadas, ${d.tareas_abiertas} sin cerrar.
+           Se ven en el módulo <a href="Tareas.html">Tareas</a>.</p>` : ''}`;
+  }
+
+  function pintar() {
+    const caja = document.getElementById('fichas');
+    caja.innerHTML = lista.length
+      ? lista.map(ficha).join('')
+      : '<div class="tarjeta vacio">No hay riesgos que coincidan con el filtro.</div>';
+  }
+
+  // ─── Acciones ────────────────────────────────────────────────────────────
+  document.getElementById('fichas').addEventListener('click', async e => {
+    const b = e.target.closest('button[data-info],button[data-editar],button[data-tarea],button[data-aprobar]');
+    if (!b) return;
+    const id = Number(b.dataset.info || b.dataset.editar || b.dataset.tarea || b.dataset.aprobar);
+    try {
+      if (b.dataset.info) {
+        if (abiertos.has(id)) abiertos.delete(id);
+        else { abiertos.add(id); if (!detalles[id]) { pintar(); detalles[id] = await api(`/riesgos/${id}`); } }
+        return pintar();
+      }
+      if (b.dataset.editar)  return editar(id);
+      if (b.dataset.tarea)   return nuevaTarea(id);
+      if (b.dataset.aprobar) {
+        await api(`/riesgos/${id}/estado`, { method: 'POST', cuerpo: { estado: 'Aprobado' } });
+        return ui.aviso('Riesgo aprobado', 'ok');
+      }
+    } catch (err) { ui.aviso(err.message); }
+  });
+
+  // ─── Alta y edición ──────────────────────────────────────────────────────
+  const caja = document.getElementById('caja-form');
+  if (puede('riesgos.crear')) document.getElementById('btn-nuevo').hidden = false;
+  document.getElementById('btn-cancelar').onclick = () => { caja.hidden = true; };
+
+  document.getElementById('btn-nuevo').onclick = () => {
+    document.getElementById('form').reset();
+    document.getElementById('r-id').value = '';
+    document.getElementById('r-fecha').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('form-titulo').textContent = 'Nuevo riesgo';
+    subfactores(); recalcular();
+    caja.hidden = false;
+    caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+
+  async function editar(id) {
+    const r = detalles[id] || await api(`/riesgos/${id}`);
+    detalles[id] = r;
+    for (const [campo, valor] of [
+      ['r-id', r.id], ['r-codigo', r.codigo], ['r-factor', r.factor_id],
+      ['r-desc', r.descripcion], ['r-contexto', r.contexto || ''],
+      ['r-prob', r.probabilidad], ['r-imp', r.impacto],
+      ['r-resp', r.responsable_id || ''], ['r-ref', r.referencia || ''],
+      ['r-fecha', String(r.fecha_identificacion).slice(0, 10)],
+    ]) document.getElementById(campo).value = valor;
+    subfactores();
+    document.getElementById('r-subfactor').value = r.subfactor_id || '';
+    recalcular();
+    document.getElementById('form-titulo').textContent = `Editar ${r.codigo}`;
+    caja.hidden = false;
+    caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  document.getElementById('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const id = document.getElementById('r-id').value;
+    const cuerpo = {
+      evaluacion_id: cat.evaluaciones.find(x => x.estado === 'Abierta')?.id || cat.evaluaciones[0]?.id,
+      codigo:       document.getElementById('r-codigo').value.trim(),
+      factor_id:    Number(document.getElementById('r-factor').value),
+      subfactor_id: document.getElementById('r-subfactor').value || null,
+      descripcion:  document.getElementById('r-desc').value.trim(),
+      contexto:     document.getElementById('r-contexto').value.trim() || null,
+      referencia:   document.getElementById('r-ref').value.trim() || null,
+      probabilidad: Number(document.getElementById('r-prob').value),
+      impacto:      Number(document.getElementById('r-imp').value),
+      responsable_id: document.getElementById('r-resp').value || null,
+      fecha_identificacion: document.getElementById('r-fecha').value,
+    };
+    try {
+      if (id) { await api(`/riesgos/${id}`, { method: 'PUT', cuerpo }); delete detalles[id]; }
+      else      await api('/riesgos', { method: 'POST', cuerpo });
+      caja.hidden = true;
+      ui.aviso(id ? 'Riesgo actualizado' : 'Riesgo creado', 'ok');
+    } catch (err) { ui.aviso(err.message); }
+  });
+
+  // ─── + Tarea sobre un riesgo ─────────────────────────────────────────────
+  const cajaT = document.getElementById('caja-tarea');
+  document.getElementById('btn-cancelar-tarea').onclick = () => { cajaT.hidden = true; };
+
+  function nuevaTarea(idRiesgo) {
+    const r = lista.find(x => x.id === idRiesgo);
+    document.getElementById('form-tarea').reset();
+    document.getElementById('t-riesgo').value = idRiesgo;
+    // Arranca con un título propuesto: casi siempre se trata de verificar o
+    // reforzar el control del riesgo que se está mirando.
+    document.getElementById('t-titulo').value = `Verificar controles de ${r.codigo}`;
+    document.getElementById('t-desc').value = r.descripcion;
+    document.getElementById('t-fecha').value = new Date().toISOString().slice(0, 10);
+    const limite = new Date(); limite.setDate(limite.getDate() + 7);
+    document.getElementById('t-limite').value = limite.toISOString().slice(0, 10);
+    document.getElementById('t-resp').value = r.responsable_id || '';
+    document.getElementById('t-prioridad').value =
+      ['Alto', 'Critico'].includes(r.residual_nivel) ? 'Alta' : 'Media';
+    document.getElementById('tarea-titulo').textContent = `Nueva tarea sobre ${r.codigo}`;
+    cajaT.hidden = false;
+    cajaT.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  document.getElementById('form-tarea').addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      await api('/tareas', { method: 'POST', cuerpo: {
+        titulo:      document.getElementById('t-titulo').value.trim(),
+        descripcion: document.getElementById('t-desc').value.trim() || null,
+        tipo:        document.getElementById('t-tipo').value,
+        prioridad:   document.getElementById('t-prioridad').value,
+        riesgo_id:   Number(document.getElementById('t-riesgo').value),
+        fecha_programada: document.getElementById('t-fecha').value,
+        fecha_limite:     document.getElementById('t-limite').value || null,
+        responsable_id:   document.getElementById('t-resp').value || null } });
+      cajaT.hidden = true;
+      ui.aviso('Tarea agendada y vinculada al riesgo', 'ok');
+    } catch (err) { ui.aviso(err.message); }
+  });
+
+  // ─── Carga ───────────────────────────────────────────────────────────────
+  let filtroTexto = '';
+  async function cargar() {
+    const q = new URLSearchParams();
+    for (const [campo, clave] of [['f-factor','factor'], ['f-nivel','nivel'], ['f-estado','estado']]) {
+      const v = document.getElementById(campo).value;
+      if (v) q.set(clave, v);
+    }
+    try {
+      lista = await api(`/riesgos?${q}`);
+      if (filtroTexto) {
+        const t = filtroTexto.toLowerCase();
+        lista = lista.filter(r => (r.codigo + ' ' + r.descripcion).toLowerCase().includes(t));
+      }
+      for (const id of [...abiertos]) if (!lista.some(r => r.id === id)) abiertos.delete(id);
+      for (const id of abiertos) detalles[id] = await api(`/riesgos/${id}`);
+      pintar();
+    } catch (e) { ui.aviso(e.message); }
+  }
+
+  for (const id of ['f-factor', 'f-nivel', 'f-estado'])
+    document.getElementById(id).onchange = cargar;
+  let reloj;
+  document.getElementById('f-buscar').oninput = e => {
+    filtroTexto = e.target.value.trim();
+    clearTimeout(reloj); reloj = setTimeout(cargar, 250);
+  };
+
+  subfactores(); recalcular();
+  await cargar();
+  MDP.vivo.al('riesgos', cargar);
+  MDP.vivo.al('tareas',  cargar);   // el contador de tareas del riesgo se actualiza solo
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tareas · Matriz MDP</title>
+<link rel="icon" href="favicon.svg">
+<link rel="stylesheet" href="app.css">
+<style>
+.grupo { margin-bottom: 20px; }
+.grupo > h2 { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+.grupo .cuenta { font-size: 12px; font-weight: 600; color: var(--ink-2);
+  background: var(--plane); border: 1px solid var(--borde); border-radius: 999px; padding: 1px 9px; }
+.item { background: var(--surface-1); border: 1px solid var(--borde);
+        border-left: 4px solid var(--axis); border-radius: var(--radio);
+        padding: 13px 16px; margin-bottom: 8px; }
+.item[data-e="Pendiente"]   { border-left-color: var(--nivel-moderado); }
+.item[data-e="En proceso"]  { border-left-color: var(--serie-1); }
+.item[data-e="En revision"] { border-left-color: var(--serie-2); }
+.item[data-e="Completada"]  { border-left-color: var(--nivel-bajo); }
+.item[data-e="Cancelada"]   { border-left-color: var(--ink-muted); opacity: .65; }
+.item.venc { border-left-color: var(--nivel-critico); }
+.item .alto { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.item h3 { margin: 0; font-size: 14.5px; font-weight: 600; flex: 1; min-width: 180px; }
+.item .meta { font-size: 12px; color: var(--ink-muted); display: flex; gap: 14px;
+              flex-wrap: wrap; margin-top: 7px; }
+.item .pie { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 11px;
+             padding-top: 10px; border-top: 1px solid var(--grid); }
+.linea { list-style: none; margin: 10px 0 0; padding: 0 0 0 20px; border-left: 2px solid var(--grid); }
+.linea li { position: relative; padding: 0 0 14px 14px; }
+.linea li::before { content: ""; position: absolute; left: -23px; top: 3px; width: 9px; height: 9px;
+  border-radius: 50%; background: var(--serie-1); box-shadow: 0 0 0 3px var(--surface-1); }
+.linea li.resp::before { background: var(--serie-2); }
+.linea .cab { font-size: 12.5px; font-weight: 600; }
+.linea .meta2 { font-size: 11.5px; color: var(--ink-muted); }
+.linea .dur { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 7px;
+  border-radius: 999px; border: 1px solid var(--borde); color: var(--ink-2); margin-left: 6px; }
+.filtros { display: grid; gap: 12px;
+           grid-template-columns: repeat(auto-fit, minmax(min(170px,100%), 1fr)); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tareas</h1>
+  <p class="sub">Todo lo agendado, agrupado por estado. Para verlo por fecha está el <a href="Calendario.html">Calendario</a>.</p>
+  <div id="aviso" class="aviso error" hidden></div>
+
+  <div class="tarjeta" style="margin-bottom:16px">
+    <div class="filtros">
+      <div><label for="f-estado">Estado</label><select id="f-estado"><option value="">Todos</option></select></div>
+      <div><label for="f-resp">Responsable</label><select id="f-resp"><option value="">Todos</option></select></div>
+      <div><label for="f-tipo">Tipo</label><select id="f-tipo">
+        <option value="">Todos</option><option>Tarea</option><option>Control</option></select></div>
+      <div><label for="f-buscar">Buscar</label><input id="f-buscar" placeholder="título o riesgo"></div>
+      <div style="align-self:end"><label style="display:flex;gap:7px;align-items:center;font-size:13px;color:var(--ink-1);font-weight:400">
+        <input type="checkbox" id="f-venc" style="width:auto"> Solo vencidas</label></div>
+    </div>
+  </div>
+
+  <section class="rejilla kpis" id="kpis"></section>
+  <div id="grupos"></div>
+</main>
+
+<script src="app.js"></script>
+<script>
+'use strict';
+(async () => {
+  const u = await MDP.iniciar({ permiso: 'tareas.ver' });
+  if (!u) return;
+  const { ui, api, puede } = MDP;
+
+  const ESTADOS = ['Pendiente', 'En proceso', 'En revision', 'Completada', 'Cancelada'];
+  const COLOR = { 'Pendiente':'var(--nivel-moderado)', 'En proceso':'var(--serie-1)',
+                  'En revision':'var(--serie-2)', 'Completada':'var(--nivel-bajo)',
+                  'Cancelada':'var(--ink-muted)' };
+  const hoy = new Date().toISOString().slice(0, 10);
+  const vencida = t => !['Completada','Cancelada'].includes(t.estado)
+                    && (t.fecha_limite || t.fecha_programada) < hoy;
+
+  function duracion(seg) {
+    const s = Math.max(0, Math.round(Number(seg) || 0));
+    if (s < 60) return `${s} s`;
+    const min = Math.floor(s / 60);
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60), m = min % 60;
+    if (h < 24) return m ? `${h} h ${m} min` : `${h} h`;
+    const d = Math.floor(h / 24), hr = h % 24;
+    return hr ? `${d} d ${hr} h` : `${d} d`;
+  }
+
+  let cat = null, lista = [], abiertas = new Set(), detalles = {};
+  cat = await api('/catalogos');
+  document.getElementById('f-estado').innerHTML += ESTADOS.map(e => `<option>${e}</option>`).join('');
+  document.getElementById('f-resp').innerHTML +=
+    cat.usuarios.map(x => `<option value="${x.id}">${ui.esc(x.nombre)}</option>`).join('');
+
+  function kpis() {
+    const abiertasN = lista.filter(t => !['Completada','Cancelada'].includes(t.estado)).length;
+    const vencidasN = lista.filter(vencida).length;
+    const mias = lista.filter(t => t.responsable_id === u.id
+      && !['Completada','Cancelada'].includes(t.estado)).length;
+    const completadas = lista.filter(t => t.estado === 'Completada').length;
+    const t = (et, v, n) => `<div class="tarjeta kpi"><div class="etiqueta">${et}</div>
+      <div class="valor">${v}</div><div class="nota">${n}</div></div>`;
+    document.getElementById('kpis').innerHTML =
+      t('Asignadas a usted', ui.num(mias), 'sin cerrar') +
+      t('Abiertas', ui.num(abiertasN), `de ${lista.length} en total`) +
+      t('Vencidas', ui.num(vencidasN), vencidasN ? 'pasaron su fecha límite' : 'ninguna atrasada') +
+      t('Completadas', ui.num(completadas), 'en el período mostrado');
+  }
+
+  function item(t) {
+    const abierta = abiertas.has(t.id);
+    const d = detalles[t.id];
+    return `
+    <article class="item${vencida(t) ? ' venc' : ''}" data-e="${ui.esc(t.estado)}">
+      <div class="alto">
+        <h3>${ui.esc(t.titulo)}</h3>
+        <span class="nivel" style="color:${COLOR[t.estado]}">${ui.esc(t.estado)}</span>
+        ${vencida(t) ? '<span class="nivel" data-n="Critico">Vencida</span>' : ''}
+      </div>
+      <div class="meta">
+        <span>${ui.esc(t.tipo)} · prioridad ${ui.esc(t.prioridad)}</span>
+        <span>Responsable: ${ui.esc(t.responsable_nombre || 'sin asignar')}</span>
+        <span>Programada: ${ui.fecha(t.fecha_programada)}</span>
+        ${t.fecha_limite ? `<span>Límite: ${ui.fecha(t.fecha_limite)}</span>` : ''}
+        ${t.riesgo_codigo ? `<span>Riesgo ${ui.esc(t.riesgo_codigo)}</span>` : ''}
+        ${Number(t.traspasos) ? `<span>${t.traspasos} traspaso(s)</span>` : ''}
+      </div>
+      ${abierta && d ? panelFases(d) : ''}
+      <div class="pie">
+        <button class="accion" data-fases="${t.id}">${abierta ? '− Menos' : '+ Info'}</button>
+        ${puede('tareas.avanzar') && !['Completada','Cancelada'].includes(t.estado)
+          ? `<button class="accion primario" data-avanzar="${t.id}">Cambiar estado</button>` : ''}
+      </div>
+    </article>`;
+  }
+
+  function panelFases(d) {
+    const pasos = d.traspasos.map((x, i) => {
+      const cab = i === 0 ? `Alta · queda en <strong>${ui.esc(x.estado_hasta)}</strong>`
+        : (x.cambio_estado ? `${ui.esc(x.estado_desde)} → <strong>${ui.esc(x.estado_hasta)}</strong>`
+                           : 'Cambio de responsable');
+      const resp = x.cambio_responsable
+        ? `${ui.esc(x.responsable_desde || 'sin asignar')} → ${ui.esc(x.responsable_hasta || 'sin asignar')}`
+        : (x.responsable_hasta ? `a cargo de ${ui.esc(x.responsable_hasta)}` : 'sin responsable');
+      const dur = i === 0 || x.duracion_segundos == null ? ''
+        : `<span class="dur">${duracion(x.duracion_segundos)} en ${ui.esc(x.estado_desde)}</span>`;
+      return `<li class="${x.cambio_responsable && !x.cambio_estado ? 'resp' : ''}">
+        <div class="cab">${cab}${dur}</div>
+        <div class="meta2">${resp} · ${new Date(String(x.created_at).replace(' ','T')).toLocaleString('es-PY')}
+          ${x.nota ? ` · “${ui.esc(x.nota)}”` : ''}</div></li>`;
+    }).join('');
+    const total = d.traspasos.reduce((a, x) => a + (Number(x.duracion_segundos) || 0), 0);
+    return `
+      ${d.descripcion ? `<p class="sub" style="margin:10px 0 0;font-size:13px">${ui.esc(d.descripcion)}</p>` : ''}
+      <p class="sub" style="margin:8px 0 0;font-size:12.5px">
+        ${d.completada_en
+          ? `Resuelta en <strong>${duracion((new Date(d.completada_en.replace(' ','T')) - new Date(d.created_at.replace(' ','T')))/1000)}</strong>`
+          : `<strong>${duracion(total)}</strong> acumulados, sin cerrar`}</p>
+      <ul class="linea">${pasos}</ul>
+      ${puede('tareas.avanzar') && !['Completada','Cancelada'].includes(d.estado) ? `
+        <form data-avance="${d.id}" class="fila" style="align-items:end;margin-top:6px">
+          <div class="campo" style="margin:0"><label>Pasar a</label>
+            <select name="estado">${ESTADOS.map(e =>
+              `<option${e === d.estado ? ' selected' : ''}>${e}</option>`).join('')}</select></div>
+          <div class="campo" style="margin:0"><label>Responsable</label>
+            <select name="responsable_id"><option value="">—</option>${cat.usuarios.map(x =>
+              `<option value="${x.id}"${x.id === d.responsable_id ? ' selected' : ''}>${ui.esc(x.nombre)}</option>`).join('')}</select></div>
+          <div class="campo" style="margin:0"><label>Nota (opcional)</label>
+            <input name="nota" maxlength="500" placeholder="Por qué cambia"></div>
+          <div><button class="accion primario">Registrar</button></div>
+        </form>` : ''}`;
+  }
+
+  function pintar() {
+    kpis();
+    const caja = document.getElementById('grupos');
+    if (!lista.length) return caja.innerHTML =
+      '<div class="tarjeta vacio">No hay tareas que coincidan con el filtro.</div>';
+    caja.innerHTML = ESTADOS.map(e => {
+      const g = lista.filter(t => t.estado === e);
+      if (!g.length) return '';
+      return `<section class="grupo">
+        <h2><span class="nivel" style="color:${COLOR[e]}">${e}</span>
+            <span class="cuenta">${g.length}</span></h2>
+        ${g.map(item).join('')}</section>`;
+    }).join('');
+  }
+
+  document.getElementById('grupos').addEventListener('click', async e => {
+    const b = e.target.closest('button[data-fases],button[data-avanzar]');
+    if (!b) return;
+    const id = Number(b.dataset.fases || b.dataset.avanzar);
+    try {
+      if (!abiertas.has(id)) { abiertas.add(id); pintar(); detalles[id] = await api(`/tareas/${id}`); }
+      else if (b.dataset.fases) abiertas.delete(id);
+      pintar();
+      if (b.dataset.avanzar) document.querySelector(`form[data-avance="${id}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (err) { ui.aviso(err.message); }
+  });
+
+  document.getElementById('grupos').addEventListener('submit', async e => {
+    const f = e.target.closest('form[data-avance]');
+    if (!f) return;
+    e.preventDefault();
+    const d = new FormData(f);
+    try {
+      const r = await api(`/tareas/${f.dataset.avance}/avanzar`, { method: 'POST', cuerpo: {
+        estado: d.get('estado'),
+        responsable_id: d.get('responsable_id') || null,
+        nota: d.get('nota') || null } });
+      ui.aviso(`Cambio registrado. La fase anterior duró ${duracion(r.duracion_segundos)}.`, 'ok');
+      delete detalles[f.dataset.avance];
+    } catch (err) { ui.aviso(err.message); }
+  });
+
+  let filtroTexto = '';
+  async function cargar() {
+    const q = new URLSearchParams();
+    const est = document.getElementById('f-estado').value;
+    const rsp = document.getElementById('f-resp').value;
+    const tip = document.getElementById('f-tipo').value;
+    if (est) q.set('estado', est);
+    if (rsp) q.set('responsable', rsp);
+    if (tip) q.set('tipo', tip);
+    try {
+      lista = await api(`/tareas?${q}`);
+      if (document.getElementById('f-venc').checked) lista = lista.filter(vencida);
+      if (filtroTexto) {
+        const t = filtroTexto.toLowerCase();
+        lista = lista.filter(x => (x.titulo + ' ' + (x.riesgo_codigo || '')).toLowerCase().includes(t));
+      }
+      for (const id of [...abiertas]) {
+        if (!lista.some(t => t.id === id)) abiertas.delete(id);
+        else detalles[id] = await api(`/tareas/${id}`);
+      }
+      pintar();
+    } catch (e) { ui.aviso(e.message); }
+  }
+
+  for (const id of ['f-estado', 'f-resp', 'f-tipo', 'f-venc'])
+    document.getElementById(id).onchange = cargar;
+  let reloj;
+  document.getElementById('f-buscar').oninput = e => {
+    filtroTexto = e.target.value.trim();
+    clearTimeout(reloj); reloj = setTimeout(cargar, 250);
+  };
+
+  await cargar();
+  MDP.vivo.al('tareas', cargar);
+})();
+</script>
+</body>
+</html>

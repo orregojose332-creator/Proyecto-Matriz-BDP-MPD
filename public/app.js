@@ -176,6 +176,10 @@ const MDP = (() => {
     matriz:    '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
     calendario:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/>'
              + '<path d="M8 3v4M16 3v4"/><path d="M7.5 14h3v3h-3z"/>',
+    riesgos:   '<path d="M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/>'
+             + '<path d="M12 9v4.5"/><path d="M12 17.2h.01"/>',
+    tareas:    '<path d="M8 5h11M8 12h11M8 19h11"/><path d="m3 5 1.4 1.4L7 3.8"/>'
+             + '<path d="m3 12 1.4 1.4L7 10.8"/><circle cx="4.5" cy="19" r="1.4"/>',
     usuarios:  '<path d="M16 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20"/><circle cx="9" cy="7" r="3.2"/>'
              + '<path d="M17.5 14.2A4 4 0 0 1 21 18.1V20"/><path d="M15.8 4.3a3.2 3.2 0 0 1 0 5.9"/>',
     cargos:    '<path d="M12 2.8 20 6v5.6c0 4.5-3.2 8.2-8 9.6-4.8-1.4-8-5.1-8-9.6V6l8-3.2Z"/>'
@@ -189,6 +193,8 @@ const MDP = (() => {
 
   const PAGINAS = [
     { id: 'tablero',   href: 'Reportes.html',  texto: 'Tablero',   permiso: 'reportes.ver' },
+    { id: 'riesgos',   href: 'Riesgos.html',   texto: 'Riesgos',   permiso: 'riesgos.ver' },
+    { id: 'tareas',    href: 'Tareas.html',    texto: 'Tareas',    permiso: 'tareas.ver' },
     { id: 'matriz',    href: 'Matriz.html',    texto: 'Matriz',    permiso: 'riesgos.ver' },
     { id: 'calendario',href: 'Calendario.html',texto: 'Calendario',permiso: 'tareas.ver' },
     { id: 'usuarios',  href: 'Usuarios.html',  texto: 'Usuarios',  permiso: 'usuarios.gestionar' },

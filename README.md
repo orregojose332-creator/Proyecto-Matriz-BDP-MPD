@@ -16,6 +16,10 @@ SEPRELAD en Paraguay.
   mapa de calor 5×5.
 - **Actualización instantánea**: lo que carga un usuario aparece en las pantallas
   de los demás sin refrescar.
+- **Riesgos**: cada riesgo en una ficha legible, con un botón **+ info** que
+  explica el tipo de riesgo, sus casos típicos y la situación concreta en la
+  entidad, y un botón **+ Tarea** que agenda trabajo sobre ese riesgo.
+- **Tareas**: todo lo agendado agrupado por estado, con el historial de fases.
 - **Calendario** de tareas y controles agendados, con medición de cuánto tarda
   cada fase del trabajo y cuántas manos pasa.
 - **Bitácora de auditoría** de quién hizo qué y cuándo.
@@ -183,6 +187,30 @@ sobre el contenido; se cierra al tocar fuera, con Escape o al elegir un módulo.
 
 La lateral solo lista los módulos que el cargo del usuario puede abrir, pero eso
 es comodidad visual: el permiso se verifica igual en el servidor.
+
+## Los dos apartados de trabajo
+
+**Riesgos** es la vista de uso diario: una ficha por riesgo, con franja de color
+según su nivel residual, las cifras del cálculo y tres acciones.
+
+- **+ info** despliega cuatro cosas: qué significa ese tipo de riesgo, sus casos
+  típicos, la situación concreta en la entidad y cómo se llegó al número.
+- **Editar** abre el formulario, y solo aparece con el permiso `riesgos.editar`.
+- **+ Tarea** agenda trabajo sobre ese riesgo, con el título, el responsable y
+  la prioridad ya propuestos a partir del riesgo; exige `tareas.crear`.
+
+La orientación y los casos típicos viven en el **subfactor**, no en el riesgo,
+porque describen la categoría y sirven para todos los riesgos que caen en ella.
+Los 18 subfactores vienen con ese contenido cargado, y se edita desde catálogos
+con el permiso `catalogos.gestionar`. Lo propio de cada riesgo va en su campo de
+contexto, que se completa con **Editar**.
+
+**Matriz** sigue existiendo como la tabla densa, para análisis y exportación.
+Muestra los mismos riesgos en otro formato: si en el uso resulta redundante,
+conviene fusionarlas en una sola pantalla.
+
+**Tareas** agrupa lo agendado por estado, con buscador, filtro de vencidas y el
+historial de fases de cada una. Para verlo por fecha está **Calendario**.
 
 ## Calendario y medición de fases
 
