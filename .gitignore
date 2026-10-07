@@ -1,5 +1,11 @@
 node_modules/
 .env
+
+# Los respaldos llevan los datos reales y los hashes de contrasena: se guardan
+# aparte, nunca en el repositorio, ni aunque sea privado.
+respaldos/
+*.sql.bak
+
 *.log
 .DS_Store
 Thumbs.db

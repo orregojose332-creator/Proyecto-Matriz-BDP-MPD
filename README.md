@@ -212,6 +212,65 @@ El cambio de estado o responsable se registra desde esa misma pantalla, y exige
 el permiso `tareas.avanzar`. Las métricas de tiempos exigen `tareas.metricas`,
 que por defecto tienen Administrador y Supervisor pero no Analista.
 
+## Qué viaja por GitHub y qué no
+
+El repositorio lleva **el sistema y su configuración de arranque**; la base de
+datos lleva **lo que se carga trabajando**. Al instalar en una PC nueva:
+
+| Viene con el repositorio (lo crea `init-db`) | Se queda en la base de origen |
+|---|---|
+| Los 4 factores de riesgo de SEPRELAD | Los riesgos cargados en la matriz |
+| Los 18 subfactores de ejemplo | Los controles de cada riesgo |
+| Las escalas de probabilidad e impacto | Las tareas y sus traspasos |
+| Los 19 permisos y los 4 cargos | Los usuarios y sus contraseñas |
+| El primer ciclo de evaluación | La bitácora de auditoría |
+
+Hay un matiz que conviene tener presente: los factores, subfactores, escalas y
+cargos vienen **como los trae el seed**. Si después se editan desde las
+pantallas de administración —se agrega un subfactor, se cambia la ponderación
+de un factor, se le quita un permiso a un cargo— esos cambios viven en la base,
+no en el repositorio, y por lo tanto **no** viajan solos.
+
+## Respaldar y mudar los datos
+
+```bash
+npm run respaldar
+# -> respaldos/matriz-mdp-AAAA-MM-DD-HHMM.sql
+```
+
+Recorre todas las tablas y escribe un `.sql` con los datos. No usa `mysqldump`,
+así que no importa que ese binario no esté en el PATH, que es lo habitual en
+una instalación de XAMPP sobre Windows.
+
+Para llevar todo a otra computadora:
+
+```bash
+# En la PC de origen
+npm run respaldar
+
+# En la PC nueva: primero las tablas, después los datos
+git clone https://github.com/orregojose332-creator/Proyecto-Matriz-BDP-MPD.git
+cd Proyecto-Matriz-BDP-MPD
+npm install
+copy .env.example .env          # completar JWT_SECRET y los datos de MySQL
+npm run init-db
+npm run restaurar -- respaldos/matriz-mdp-2026-10-07-1737.sql
+npm start
+```
+
+`npm run restaurar` **reemplaza** los datos que haya, y por eso pide
+confirmación escribiendo `RESTAURAR`. No hace falta volver a crear el
+administrador: los usuarios llegan con el respaldo y **las contraseñas siguen
+siendo las mismas**, porque lo que se guarda es el hash.
+
+Conviene respaldar periódicamente aunque no se mude nada: es lo único que
+protege de un disco que falla.
+
+> **Los respaldos no se versionan.** Llevan los datos reales y los hashes de
+> las contraseñas, así que `respaldos/` está en `.gitignore`. Guárdelos en un
+> disco externo o en una carpeta de red con acceso restringido, no en el
+> repositorio ni aunque sea privado.
+
 ## Seguridad
 
 - Contraseñas en **bcrypt** coste 12. Nunca en claro, ni en la base, ni en la
