@@ -16,7 +16,10 @@
 .ficha[data-n="Alto"]     { border-left-color: var(--nivel-alto); }
 .ficha[data-n="Critico"]  { border-left-color: var(--nivel-critico); }
 
-.ficha .cuerpo { padding: 16px 18px; }
+/* No reutilizar la clase .cuerpo: en app.css es el contenedor en flex que
+   sostiene la barra lateral, y su display se filtraba hasta acá dejando la
+   insignia de nivel pegada a los datos del riesgo, en la misma línea. */
+.ficha-cuerpo { padding: 16px 18px; }
 .ficha .alto { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
 .ficha .codigo { font-weight: 700; font-size: 13px; color: var(--ink-2);
                  font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -24,10 +27,17 @@
             flex: 1; min-width: 200px; }
 .ficha .meta { font-size: 12px; color: var(--ink-muted); display: flex;
                gap: 14px; flex-wrap: wrap; margin-top: 8px; }
-.ficha .cifras { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 12px;
-                 padding-top: 12px; border-top: 1px solid var(--grid); }
-.cifra .et { font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px; color: var(--ink-muted); }
-.cifra .v  { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Las cifras viven dentro del panel «+ info», junto a la explicación de cómo
+   se llegó a ellas; la ficha cerrada queda con el código, la descripción y el
+   nivel, que es lo que se necesita para recorrer la lista. */
+.info .cifras { display: grid; gap: 10px; margin: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(112px, 100%), 1fr)); }
+.cifra { background: var(--plane); border-radius: 8px; padding: 9px 12px; min-width: 0; }
+.cifra .et { font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px;
+             color: var(--ink-muted); white-space: nowrap; }
+.cifra .v  { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 1px; }
+.cifra .sub-cifra { font-size: 11.5px; color: var(--ink-2); margin-top: 1px;
+                    overflow: hidden; text-overflow: ellipsis; }
 .ficha .pie { display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
               padding: 10px 18px; background: var(--plane); border-top: 1px solid var(--grid); }
 
@@ -164,7 +174,7 @@
     const d = detalles[r.id];
     return `
     <article class="ficha" data-n="${ui.esc(r.residual_nivel)}" data-id="${r.id}">
-      <div class="cuerpo">
+      <div class="ficha-cuerpo">
         <div class="alto">
           <span class="codigo">${ui.esc(r.codigo)}</span>
           <h3>${ui.esc(r.descripcion)}</h3>
@@ -175,14 +185,6 @@
           <span>Estado: ${ui.esc(r.estado)}</span>
           <span>Responsable: ${ui.esc(r.responsable_nombre || 'sin asignar')}</span>
           ${Number(r.tareas_abiertas) ? `<span style="color:var(--nivel-alto);font-weight:600">${r.tareas_abiertas} tarea(s) abierta(s)</span>` : ''}
-        </div>
-        <div class="cifras">
-          <div class="cifra"><div class="et">Probabilidad</div><div class="v">${r.probabilidad} / 5</div></div>
-          <div class="cifra"><div class="et">Impacto</div><div class="v">${r.impacto} / 5</div></div>
-          <div class="cifra"><div class="et">Inherente</div><div class="v">${ui.num(r.inherente_valor, 1)}</div></div>
-          <div class="cifra"><div class="et">Residual</div><div class="v">${ui.num(r.residual_valor, 1)}</div></div>
-          <div class="cifra"><div class="et">Controles</div><div class="v">${r.controles_count}</div></div>
-          <div class="cifra"><div class="et">Tareas</div><div class="v">${r.tareas_count}</div></div>
         </div>
       </div>
       ${abierta ? `<div class="info">${d ? panelInfo(d) : '<p class="sin-dato">Cargando…</p>'}</div>` : ''}
@@ -196,11 +198,37 @@
     </article>`;
   }
 
-  /** El "+ info" junta tres cosas: qué es este tipo de riesgo, qué casos
-   *  abarca, y qué pasa con este riesgo en particular. */
+  /** 'Alta', 'Catastrófico'…: el número de la escala, solo, no dice qué
+   *  significa. La etiqueta sale del mismo catálogo que usa el formulario. */
+  const etiquetaNivel = (tipo, valor) =>
+    cat.niveles.find(n => n.tipo === tipo && Number(n.valor) === Number(valor))?.etiqueta || '';
+
+  const efectividadPromedio = controles =>
+    ui.num(controles.reduce((a, c) => a + Number(c.efectividad), 0) / controles.length, 1);
+
+  /** El "+ info" junta cuatro cosas: las cifras del riesgo, qué es este tipo
+   *  de riesgo, qué casos abarca, y qué pasa con este en particular. */
   function panelInfo(d) {
     const ejemplos = (d.subfactor_ejemplos || '').split('\n').filter(Boolean);
+    const cifra = (et, v, pie = '') =>
+      `<div class="cifra"><div class="et">${et}</div><div class="v">${v}</div>
+       ${pie ? `<div class="sub-cifra">${pie}</div>` : ''}</div>`;
     return `
+      <h4>Valoración</h4>
+      <div class="cifras">
+        ${cifra('Probabilidad', `${d.probabilidad} / 5`,
+                ui.esc(etiquetaNivel('probabilidad', d.probabilidad)))}
+        ${cifra('Impacto', `${d.impacto} / 5`,
+                ui.esc(etiquetaNivel('impacto', d.impacto)))}
+        ${cifra('Inherente', ui.num(d.inherente_valor, 1), ui.esc(d.inherente_nivel))}
+        ${cifra('Residual', ui.num(d.residual_valor, 1), ui.esc(d.residual_nivel))}
+        ${cifra('Controles', d.controles.length,
+                d.controles.length ? `efectividad ${efectividadPromedio(d.controles)} / 5`
+                                   : 'sin mitigar')}
+        ${cifra('Tareas', d.tareas_count,
+                Number(d.tareas_abiertas) ? `${d.tareas_abiertas} sin cerrar` : 'ninguna abierta')}
+      </div>
+
       <h4>Qué significa este tipo de riesgo</h4>
       ${d.subfactor_orientacion
         ? `<div class="caja"><p>${ui.esc(d.subfactor_orientacion)}</p></div>`
