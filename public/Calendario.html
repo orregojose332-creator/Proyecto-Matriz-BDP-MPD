@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calendario · Matriz MDP</title>
+<link rel="icon" href="favicon.svg">
+<link rel="stylesheet" href="app.css">
+<style>
+/* ─── Rejilla del mes ─── */
+.mes { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px;
+       background: var(--grid); border: 1px solid var(--grid); border-radius: 8px; overflow: hidden; }
+.mes .dia-sem { background: var(--surface-1); padding: 7px 4px; font-size: 11px; min-width: 0;
+  text-transform: uppercase; letter-spacing: .4px; color: var(--ink-2); text-align: center; font-weight: 600; }
+.mes .celda { background: var(--surface-1); min-height: 104px; padding: 6px;
+              cursor: pointer; min-width: 0; overflow: hidden; }
+.mes .celda:hover { background: var(--plane); }
+.mes .celda.fuera { opacity: .4; }
+.mes .celda.hoy { outline: 2px solid var(--serie-1); outline-offset: -2px; }
+.mes .celda.sel { background: var(--plane); outline: 2px solid var(--ink-muted); outline-offset: -2px; }
+.mes .num { font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 4px; }
+.mes .hoy .num { color: var(--serie-1); }
+.chip { display: block; font-size: 11px; line-height: 1.35; padding: 2px 6px; margin-bottom: 2px;
+  border-radius: 5px; border-left: 3px solid currentColor; background: var(--plane);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip .t { color: var(--ink-1); }
+.chip.vencida { font-weight: 700; }
+.mas { font-size: 10.5px; color: var(--ink-muted); padding-left: 4px; }
+
+/* ─── Linea de tiempo de traspasos ─── */
+.linea { list-style: none; margin: 0; padding: 0 0 0 22px; border-left: 2px solid var(--grid); }
+.linea li { position: relative; padding: 0 0 18px 16px; }
+.linea li::before { content: ""; position: absolute; left: -25px; top: 3px;
+  width: 10px; height: 10px; border-radius: 50%; background: var(--serie-1);
+  box-shadow: 0 0 0 3px var(--surface-1); }
+.linea li.resp::before { background: var(--serie-2); }
+.linea .cab { font-size: 13px; font-weight: 600; }
+.linea .meta { font-size: 11.5px; color: var(--ink-muted); }
+.linea .dur { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 7px;
+  border-radius: 999px; border: 1px solid var(--borde); color: var(--ink-2); margin-left: 6px; }
+
+.panel { position: sticky; top: calc(var(--alto-barra) + 16px); }
+@media (max-width: 900px) { .panel { position: static; } .mes .celda { min-height: 78px; } }
+@media (max-width: 560px) { .mes .celda { min-height: 62px; padding: 3px; } .chip { font-size: 10px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Calendario de tareas y controles</h1>
+  <p class="sub">Lo agendado, lo vencido y cuánto tarda cada fase del trabajo.</p>
+  <div id="aviso" class="aviso error" hidden></div>
+
+  <section class="rejilla kpis" id="kpis"></section>
+
+  <div class="rejilla" style="grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">
+    <div class="tarjeta" style="grid-column:1/-1">
+      <div class="acciones" style="margin-bottom:14px">
+        <button class="accion" id="ant">◀</button>
+        <strong id="titulo-mes" style="min-width:170px;text-align:center"></strong>
+        <button class="accion" id="sig">▶</button>
+        <button class="accion" id="hoy">Hoy</button>
+        <select id="f-estado" style="width:auto">
+          <option value="">Todos los estados</option>
+        </select>
+        <select id="f-resp" style="width:auto"><option value="">Todos los responsables</option></select>
+        <button class="primario" id="btn-nueva" hidden>Agendar</button>
+      </div>
+      <div class="mes" id="mes"></div>
+      <div class="leyenda" style="margin:12px 0 0">
+        <span><i style="background:var(--nivel-moderado)"></i>Pendiente</span>
+        <span><i style="background:var(--serie-1)"></i>En proceso</span>
+        <span><i style="background:var(--serie-2)"></i>En revisión</span>
+        <span><i style="background:var(--nivel-bajo)"></i>Completada</span>
+        <span><i style="background:var(--ink-muted)"></i>Cancelada</span>
+        <span><i style="background:var(--nivel-critico)"></i>Vencida</span>
+      </div>
+    </div>
+
+    <div class="tarjeta"><h2>Tiempo promedio por fase</h2>
+      <p class="sub" style="margin:-8px 0 12px;font-size:12px">
+        Cuánto permanece un trabajo en cada estado antes de pasar al siguiente.</p>
+      <div id="g-fases"></div></div>
+
+    <div class="tarjeta"><h2>Tiempo retenido por responsable</h2>
+      <p class="sub" style="margin:-8px 0 12px;font-size:12px">
+        Suma del tiempo que cada persona tuvo el trabajo en sus manos.</p>
+      <div id="g-resp"></div></div>
+
+    <div class="tarjeta" style="grid-column:1/-1" id="caja-detalle" hidden></div>
+    <div class="tarjeta" style="grid-column:1/-1" id="caja-dia"></div>
+  </div>
+
+  <div class="tarjeta" id="caja-form" hidden style="margin-top:16px">
+    <h2 id="form-titulo">Agendar tarea</h2>
+    <form id="form">
+      <input type="hidden" id="t-id">
+      <div class="fila">
+        <div class="campo"><label for="t-titulo">Título</label><input id="t-titulo" required maxlength="200"></div>
+        <div class="campo"><label for="t-tipo">Tipo</label>
+          <select id="t-tipo"><option>Tarea</option><option>Control</option></select></div>
+        <div class="campo"><label for="t-prioridad">Prioridad</label>
+          <select id="t-prioridad"><option>Baja</option><option selected>Media</option><option>Alta</option></select></div>
+      </div>
+      <div class="campo"><label for="t-desc">Descripción</label>
+        <textarea id="t-desc" rows="2" maxlength="1000"></textarea></div>
+      <div class="fila">
+        <div class="campo"><label for="t-fecha">Fecha programada</label><input id="t-fecha" type="date" required></div>
+        <div class="campo"><label for="t-limite">Fecha límite</label><input id="t-limite" type="date"></div>
+        <div class="campo"><label for="t-resp">Responsable</label><select id="t-resp"><option value="">—</option></select></div>
+        <div class="campo"><label for="t-riesgo">Riesgo asociado</label><select id="t-riesgo"><option value="">—</option></select></div>
+      </div>
+      <div class="acciones">
+        <button class="primario">Guardar</button>
+        <button type="button" id="btn-cancelar">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script>
+'use strict';
+(async () => {
+  const u = await MDP.iniciar({ permiso: 'tareas.ver' });
+  if (!u) return;
+  const { ui, api, puede } = MDP;
+
+  const ESTADOS = ['Pendiente', 'En proceso', 'En revision', 'Completada', 'Cancelada'];
+  const COLOR_ESTADO = {
+    'Pendiente':   'var(--nivel-moderado)',
+    'En proceso':  'var(--serie-1)',
+    'En revision': 'var(--serie-2)',
+    'Completada':  'var(--nivel-bajo)',
+    'Cancelada':   'var(--ink-muted)',
+  };
+  const DIAS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio',
+                 'agosto','septiembre','octubre','noviembre','diciembre'];
+
+  let cursor = new Date(); cursor.setDate(1);
+  let tareas = [], metricas = null, cat = null, diaSel = null, detalle = null;
+
+  /** Segundos a algo que una persona lee de un vistazo. */
+  function duracion(seg) {
+    const s = Math.max(0, Math.round(Number(seg) || 0));
+    if (s < 60) return `${s} s`;
+    const min = Math.floor(s / 60);
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60), m = min % 60;
+    if (h < 24) return m ? `${h} h ${m} min` : `${h} h`;
+    const d = Math.floor(h / 24), hr = h % 24;
+    return hr ? `${d} d ${hr} h` : `${d} d`;
+  }
+
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const hoyIso = iso(new Date());
+  const vencida = t => t.estado !== 'Completada' && t.estado !== 'Cancelada'
+                     && (t.fecha_limite || t.fecha_programada) < hoyIso;
+
+  // ─── Catálogos ───────────────────────────────────────────────────────────
+  cat = await api('/catalogos');
+  document.getElementById('f-estado').innerHTML += ESTADOS.map(e => `<option>${e}</option>`).join('');
+  const opcUsuarios = cat.usuarios.map(x => `<option value="${x.id}">${ui.esc(x.nombre)}</option>`).join('');
+  document.getElementById('f-resp').innerHTML += opcUsuarios;
+  document.getElementById('t-resp').innerHTML += opcUsuarios;
+  const riesgos = await api('/riesgos').catch(() => []);
+  document.getElementById('t-riesgo').innerHTML += riesgos.map(r =>
+    `<option value="${r.id}">${ui.esc(r.codigo)} — ${ui.esc(r.descripcion.slice(0,50))}</option>`).join('');
+
+  // ─── KPIs ────────────────────────────────────────────────────────────────
+  function pintarKpis() {
+    if (!metricas) return;
+    const { resolucion, traspasos, agenda } = metricas;
+    const t = (et, val, nota) => `<div class="tarjeta kpi"><div class="etiqueta">${et}</div>
+      <div class="valor">${val}</div><div class="nota">${nota}</div></div>`;
+    document.getElementById('kpis').innerHTML =
+      t('Tiempo promedio de resolución',
+        resolucion.completadas ? duracion(resolucion.promedio_seg) : '—',
+        resolucion.completadas ? `sobre ${resolucion.completadas} tarea(s) completada(s)` : 'sin tareas completadas aún') +
+      t('Más rápida / más lenta',
+        resolucion.completadas
+          ? `<span style="font-size:22px">${duracion(resolucion.minimo_seg)} · ${duracion(resolucion.maximo_seg)}</span>`
+          : '—',
+        'mejor y peor caso registrados') +
+      t('Traspasos por tarea', ui.num(traspasos.promedio_por_tarea, 1),
+        `máximo observado: ${ui.num(traspasos.maximo)}`) +
+      t('Vencidas', ui.num(agenda.vencidas || 0),
+        `${ui.num(agenda.abiertas || 0)} abiertas · ${ui.num(agenda.completadas || 0)} completadas`);
+  }
+
+  // ─── Gráfico: duración por fase ──────────────────────────────────────────
+  function graficoFases() {
+    const filas = ESTADOS
+      .map(e => metricas.porFase.find(f => f.fase === e) || { fase: e, veces: 0, promedio_seg: 0 })
+      .filter(f => f.veces > 0);
+    const caja = document.getElementById('g-fases');
+    if (!filas.length) return caja.innerHTML =
+      '<div class="vacio">Todavía no hay fases cerradas que medir.</div>';
+
+    const W = 520, alto = 34, M = { t: 6, r: 90, b: 6, l: 104 };
+    const H = M.t + filas.length * alto + M.b;
+    const max = Math.max(...filas.map(f => +f.promedio_seg)) || 1;
+    const ancho = W - M.l - M.r;
+    let s = '';
+    filas.forEach((f, i) => {
+      const y = M.t + i * alto, w = Math.max(2, (+f.promedio_seg / max) * ancho);
+      s += `<text x="${M.l - 10}" y="${y + 20}" text-anchor="end" font-size="12"
+             fill="var(--ink-2)">${ui.esc(f.fase)}</text>
+            <rect x="${M.l}" y="${y + 8}" width="${w}" height="18" rx="4"
+              fill="${COLOR_ESTADO[f.fase]}">
+              <title>${f.fase}: promedio ${duracion(f.promedio_seg)} · ${f.veces} vez/veces · máximo ${duracion(f.maximo_seg)}</title>
+            </rect>
+            <text x="${M.l + w + 8}" y="${y + 21}" font-size="11.5" font-weight="600"
+             fill="var(--ink-1)">${duracion(f.promedio_seg)}</text>`;
+    });
+    caja.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"
+      aria-label="Tiempo promedio por fase">${s}</svg>`;
+  }
+
+  function graficoResponsables() {
+    const filas = (metricas.porResponsable || []).slice(0, 6);
+    const caja = document.getElementById('g-resp');
+    if (!filas.length) return caja.innerHTML =
+      '<div class="vacio">Todavía no hay traspasos registrados.</div>';
+    const W = 520, alto = 34, M = { t: 6, r: 90, b: 6, l: 140 };
+    const H = M.t + filas.length * alto + M.b;
+    const max = Math.max(...filas.map(f => +f.total_seg)) || 1;
+    const ancho = W - M.l - M.r;
+    let s = '';
+    filas.forEach((f, i) => {
+      const y = M.t + i * alto, w = Math.max(2, (+f.total_seg / max) * ancho);
+      s += `<text x="${M.l - 10}" y="${y + 20}" text-anchor="end" font-size="12"
+             fill="var(--ink-2)">${ui.esc(String(f.nombre).slice(0, 18))}</text>
+            <rect x="${M.l}" y="${y + 8}" width="${w}" height="18" rx="4" fill="var(--serie-1)">
+              <title>${f.nombre}: ${duracion(f.total_seg)} en total, ${f.tramos} tramo(s), promedio ${duracion(f.promedio_seg)}</title>
+            </rect>
+            <text x="${M.l + w + 8}" y="${y + 21}" font-size="11.5" font-weight="600"
+             fill="var(--ink-1)">${duracion(f.total_seg)}</text>`;
+    });
+    caja.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img"
+      aria-label="Tiempo retenido por responsable">${s}</svg>`;
+  }
+
+  // ─── Rejilla del mes ─────────────────────────────────────────────────────
+  function pintarMes() {
+    document.getElementById('titulo-mes').textContent =
+      `${MESES[cursor.getMonth()]} ${cursor.getFullYear()}`;
+
+    const primero = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+    // La semana arranca el lunes: getDay() devuelve 0 para domingo.
+    const desplazamiento = (primero.getDay() + 6) % 7;
+    const inicio = new Date(primero); inicio.setDate(1 - desplazamiento);
+
+    const porDia = {};
+    for (const t of tareas) (porDia[t.fecha_programada] ||= []).push(t);
+
+    let html = DIAS.map(d => `<div class="dia-sem">${d}</div>`).join('');
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(inicio); d.setDate(inicio.getDate() + i);
+      const clave = iso(d);
+      const delMes = d.getMonth() === cursor.getMonth();
+      const lista = porDia[clave] || [];
+      const chips = lista.slice(0, 3).map(t => {
+        const color = vencida(t) ? 'var(--nivel-critico)' : COLOR_ESTADO[t.estado];
+        return `<span class="chip${vencida(t) ? ' vencida' : ''}" style="color:${color}"
+                  title="${ui.esc(t.titulo)} — ${ui.esc(t.estado)}">
+                  <span class="t">${ui.esc(t.titulo)}</span></span>`;
+      }).join('');
+      const extra = lista.length > 3 ? `<span class="mas">+${lista.length - 3} más</span>` : '';
+      html += `<div class="celda${delMes ? '' : ' fuera'}${clave === hoyIso ? ' hoy' : ''}${clave === diaSel ? ' sel' : ''}"
+                 data-dia="${clave}"><div class="num">${d.getDate()}</div>${chips}${extra}</div>`;
+    }
+    document.getElementById('mes').innerHTML = html;
+  }
+
+  function pintarDia() {
+    const caja = document.getElementById('caja-dia');
+    const lista = diaSel ? tareas.filter(t => t.fecha_programada === diaSel) : tareas;
+    const titulo = diaSel
+      ? `Agenda del ${new Date(diaSel + 'T00:00').toLocaleDateString('es-PY', { day: 'numeric', month: 'long', year: 'numeric' })}`
+      : `Todo el mes (${tareas.length} tarea${tareas.length === 1 ? '' : 's'})`;
+    caja.innerHTML = `<h2>${titulo}</h2>` + (!lista.length
+      ? '<div class="vacio">No hay nada agendado.</div>'
+      : `<div class="tabla-caja" style="overflow-x:auto"><table>
+          <thead><tr><th>Título</th><th>Tipo</th><th>Estado</th><th>Responsable</th>
+            <th>Programada</th><th>Límite</th><th class="num">Traspasos</th><th></th></tr></thead>
+          <tbody>${lista.map(t => `<tr>
+            <td><strong>${ui.esc(t.titulo)}</strong>${t.riesgo_codigo
+                 ? `<br><span style="color:var(--ink-muted);font-size:11px">Riesgo ${ui.esc(t.riesgo_codigo)}</span>` : ''}</td>
+            <td class="estado">${ui.esc(t.tipo)}</td>
+            <td><span class="nivel" style="color:${COLOR_ESTADO[t.estado]}">${ui.esc(t.estado)}</span>
+                ${vencida(t) ? ' <span class="nivel" data-n="Critico">Vencida</span>' : ''}</td>
+            <td>${ui.esc(t.responsable_nombre || '—')}</td>
+            <td class="estado">${ui.fecha(t.fecha_programada)}</td>
+            <td class="estado">${ui.fecha(t.fecha_limite)}</td>
+            <td class="num">${t.traspasos}</td>
+            <td style="text-align:right"><button class="accion" data-ver="${t.id}">Ver fases</button></td>
+          </tr>`).join('')}</tbody></table></div>`);
+  }
+
+  // ─── Detalle: la línea de tiempo de traspasos ────────────────────────────
+  async function verDetalle(id) {
+    detalle = await api(`/tareas/${id}`);
+    const caja = document.getElementById('caja-detalle');
+    const total = detalle.traspasos.reduce((a, t) => a + (Number(t.duracion_segundos) || 0), 0);
+
+    const pasos = detalle.traspasos.map((t, i) => {
+      const esResp = t.cambio_responsable && !t.cambio_estado;
+      const cab = i === 0
+        ? `Alta · queda en <strong>${ui.esc(t.estado_hasta)}</strong>`
+        : (t.cambio_estado
+            ? `${ui.esc(t.estado_desde)} → <strong>${ui.esc(t.estado_hasta)}</strong>`
+            : `Cambio de responsable`);
+      const resp = t.cambio_responsable
+        ? `${ui.esc(t.responsable_desde || 'sin asignar')} → ${ui.esc(t.responsable_hasta || 'sin asignar')}`
+        : (t.responsable_hasta ? `a cargo de ${ui.esc(t.responsable_hasta)}` : 'sin responsable');
+      const dur = i === 0 || t.duracion_segundos == null ? ''
+        : `<span class="dur" title="Lo que duró la fase anterior">${duracion(t.duracion_segundos)} en ${ui.esc(t.estado_desde)}</span>`;
+      const cuando = new Date(String(t.created_at).replace(' ', 'T')).toLocaleString('es-PY');
+      return `<li class="${esResp ? 'resp' : ''}">
+        <div class="cab">${cab}${dur}</div>
+        <div class="meta">${resp} · ${cuando}${t.usuario_nombre ? ` · registró ${ui.esc(t.usuario_nombre)}` : ''}</div>
+        ${t.nota ? `<div class="meta">“${ui.esc(t.nota)}”</div>` : ''}
+      </li>`;
+    }).join('');
+
+    caja.hidden = false;
+    caja.innerHTML = `
+      <div class="acciones" style="justify-content:space-between;margin-bottom:12px">
+        <h2 style="margin:0">${ui.esc(detalle.titulo)}</h2>
+        <button class="accion" id="cerrar-detalle">Cerrar</button>
+      </div>
+      <p class="sub" style="font-size:12.5px">
+        ${ui.esc(detalle.tipo)} · ${ui.esc(detalle.prioridad)} ·
+        estado <strong style="color:${COLOR_ESTADO[detalle.estado]}">${ui.esc(detalle.estado)}</strong> ·
+        ${detalle.traspasos.filter(t => t.cambio_responsable).length} traspaso(s) de responsable ·
+        ${detalle.completada_en
+          ? `resuelta en <strong>${duracion((new Date(detalle.completada_en.replace(' ','T')) - new Date(detalle.created_at.replace(' ','T')))/1000)}</strong>`
+          : `<strong>${duracion(total)}</strong> acumulados, sin cerrar`}
+      </p>
+      ${detalle.descripcion ? `<p class="sub">${ui.esc(detalle.descripcion)}</p>` : ''}
+      <h2 style="margin-top:18px">Fases recorridas</h2>
+      <ul class="linea">${pasos}</ul>
+      ${puede('tareas.avanzar') && detalle.estado !== 'Completada' && detalle.estado !== 'Cancelada' ? `
+        <form id="form-avance" class="fila" style="align-items:end;margin-top:8px">
+          <div class="campo" style="margin:0"><label>Pasar a</label>
+            <select name="estado">${ESTADOS.map(e =>
+              `<option${e === detalle.estado ? ' selected' : ''}>${e}</option>`).join('')}</select></div>
+          <div class="campo" style="margin:0"><label>Responsable</label>
+            <select name="responsable_id"><option value="">—</option>${cat.usuarios.map(x =>
+              `<option value="${x.id}"${x.id === detalle.responsable_id ? ' selected' : ''}>${ui.esc(x.nombre)}</option>`).join('')}</select></div>
+          <div class="campo" style="margin:0"><label>Nota (opcional)</label>
+            <input name="nota" maxlength="500" placeholder="Por qué cambia"></div>
+          <div><button class="primario">Registrar cambio</button></div>
+        </form>` : ''}`;
+    caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // ─── Eventos ─────────────────────────────────────────────────────────────
+  document.getElementById('mes').addEventListener('click', e => {
+    const c = e.target.closest('.celda');
+    if (!c) return;
+    diaSel = diaSel === c.dataset.dia ? null : c.dataset.dia;
+    pintarMes(); pintarDia();
+  });
+
+  document.getElementById('caja-dia').addEventListener('click', e => {
+    const b = e.target.closest('button[data-ver]');
+    if (b) verDetalle(Number(b.dataset.ver));
+  });
+
+  document.getElementById('caja-detalle').addEventListener('click', e => {
+    if (e.target.id === 'cerrar-detalle') {
+      document.getElementById('caja-detalle').hidden = true; detalle = null;
+    }
+  });
+
+  document.getElementById('caja-detalle').addEventListener('submit', async e => {
+    if (e.target.id !== 'form-avance') return;
+    e.preventDefault();
+    const d = new FormData(e.target);
+    try {
+      const r = await api(`/tareas/${detalle.id}/avanzar`, { method: 'POST', cuerpo: {
+        estado: d.get('estado'),
+        responsable_id: d.get('responsable_id') || null,
+        nota: d.get('nota') || null } });
+      ui.aviso(`Cambio registrado. La fase anterior duró ${duracion(r.duracion_segundos)}.`, 'ok');
+      await verDetalle(detalle.id);
+    } catch (err) { ui.aviso(err.message); }
+  });
+
+  for (const [id, fn] of [
+    ['ant', () => { cursor.setMonth(cursor.getMonth() - 1); cargar(); }],
+    ['sig', () => { cursor.setMonth(cursor.getMonth() + 1); cargar(); }],
+    ['hoy', () => { cursor = new Date(); cursor.setDate(1); diaSel = hoyIso; cargar(); }],
+  ]) document.getElementById(id).onclick = fn;
+
+  document.getElementById('f-estado').onchange = cargar;
+  document.getElementById('f-resp').onchange = cargar;
+
+  // ─── Alta ────────────────────────────────────────────────────────────────
+  const caja = document.getElementById('caja-form');
+  if (puede('tareas.crear')) document.getElementById('btn-nueva').hidden = false;
+  document.getElementById('btn-nueva').onclick = () => {
+    document.getElementById('form').reset();
+    document.getElementById('t-id').value = '';
+    document.getElementById('t-fecha').value = diaSel || hoyIso;
+    caja.hidden = false;
+    caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+  document.getElementById('btn-cancelar').onclick = () => { caja.hidden = true; };
+
+  document.getElementById('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const cuerpo = {
+      titulo:      document.getElementById('t-titulo').value.trim(),
+      descripcion: document.getElementById('t-desc').value.trim() || null,
+      tipo:        document.getElementById('t-tipo').value,
+      prioridad:   document.getElementById('t-prioridad').value,
+      fecha_programada: document.getElementById('t-fecha').value,
+      fecha_limite:     document.getElementById('t-limite').value || null,
+      responsable_id:   document.getElementById('t-resp').value || null,
+      riesgo_id:        document.getElementById('t-riesgo').value || null,
+    };
+    try {
+      const id = document.getElementById('t-id').value;
+      if (id) await api(`/tareas/${id}`, { method: 'PUT', cuerpo });
+      else    await api('/tareas',       { method: 'POST', cuerpo });
+      caja.hidden = true;
+      ui.aviso(id ? 'Tarea actualizada' : 'Tarea agendada', 'ok');
+    } catch (err) { ui.aviso(err.message); }
+  });
+
+  // ─── Carga ───────────────────────────────────────────────────────────────
+  async function cargar() {
+    const ini = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+    const desplazamiento = (ini.getDay() + 6) % 7;
+    const desde = new Date(ini); desde.setDate(1 - desplazamiento);
+    const hasta = new Date(desde); hasta.setDate(desde.getDate() + 41);
+
+    const q = new URLSearchParams({ desde: iso(desde), hasta: iso(hasta) });
+    const est = document.getElementById('f-estado').value;
+    const rsp = document.getElementById('f-resp').value;
+    if (est) q.set('estado', est);
+    if (rsp) q.set('responsable', rsp);
+
+    try {
+      tareas = await api(`/tareas?${q}`);
+      if (puede('tareas.metricas')) {
+        metricas = await api('/tareas/metricas');
+        pintarKpis(); graficoFases(); graficoResponsables();
+      } else {
+        document.getElementById('kpis').innerHTML = '';
+        for (const id of ['g-fases', 'g-resp'])
+          document.getElementById(id).closest('.tarjeta').hidden = true;
+      }
+      pintarMes(); pintarDia();
+      if (detalle) verDetalle(detalle.id);
+    } catch (e) { ui.aviso(e.message); }
+  }
+
+  await cargar();
+  MDP.vivo.al('tareas', cargar);   // otro usuario agenda o avanza algo y aparece solo
+})();
+</script>
+</body>
+</html>

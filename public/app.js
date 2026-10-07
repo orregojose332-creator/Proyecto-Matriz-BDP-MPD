@@ -81,7 +81,7 @@ const MDP = (() => {
         // EventSource reintenta solo (retry: 3000 lo fija el servidor).
       };
 
-      for (const evento of ['riesgos', 'usuarios', 'cargos', 'evaluaciones']) {
+      for (const evento of ['riesgos', 'tareas', 'usuarios', 'cargos', 'evaluaciones']) {
         fuente.addEventListener(evento, e => {
           let datos = {};
           try { datos = JSON.parse(e.data); } catch {}
@@ -174,6 +174,8 @@ const MDP = (() => {
   const ICONOS = {
     tablero:   '<path d="M4 19V11"/><path d="M10 19V5"/><path d="M16 19v-6"/><path d="M2 21h20"/>',
     matriz:    '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
+    calendario:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/>'
+             + '<path d="M8 3v4M16 3v4"/><path d="M7.5 14h3v3h-3z"/>',
     usuarios:  '<path d="M16 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20"/><circle cx="9" cy="7" r="3.2"/>'
              + '<path d="M17.5 14.2A4 4 0 0 1 21 18.1V20"/><path d="M15.8 4.3a3.2 3.2 0 0 1 0 5.9"/>',
     cargos:    '<path d="M12 2.8 20 6v5.6c0 4.5-3.2 8.2-8 9.6-4.8-1.4-8-5.1-8-9.6V6l8-3.2Z"/>'
@@ -188,6 +190,7 @@ const MDP = (() => {
   const PAGINAS = [
     { id: 'tablero',   href: 'Reportes.html',  texto: 'Tablero',   permiso: 'reportes.ver' },
     { id: 'matriz',    href: 'Matriz.html',    texto: 'Matriz',    permiso: 'riesgos.ver' },
+    { id: 'calendario',href: 'Calendario.html',texto: 'Calendario',permiso: 'tareas.ver' },
     { id: 'usuarios',  href: 'Usuarios.html',  texto: 'Usuarios',  permiso: 'usuarios.gestionar' },
     { id: 'cargos',    href: 'Cargos.html',    texto: 'Cargos',    permiso: 'cargos.gestionar' },
     { id: 'auditoria', href: 'Auditoria.html', texto: 'Auditoria', permiso: 'auditoria.ver' },

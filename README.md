@@ -16,6 +16,8 @@ SEPRELAD en Paraguay.
   mapa de calor 5×5.
 - **Actualización instantánea**: lo que carga un usuario aparece en las pantallas
   de los demás sin refrescar.
+- **Calendario** de tareas y controles agendados, con medición de cuánto tarda
+  cada fase del trabajo y cuántas manos pasa.
 - **Bitácora de auditoría** de quién hizo qué y cuándo.
 
 ## Instalación
@@ -121,6 +123,34 @@ sobre el contenido; se cierra al tocar fuera, con Escape o al elegir un módulo.
 La lateral solo lista los módulos que el cargo del usuario puede abrir, pero eso
 es comodidad visual: el permiso se verifica igual en el servidor.
 
+## Calendario y medición de fases
+
+El módulo **Calendario** agenda tareas y controles sobre una rejilla mensual:
+cada día muestra lo programado, en color según su estado, y en rojo lo vencido.
+
+Lo que permite medir los tiempos es la tabla `tarea_traspasos`: **cada cambio de
+estado o de responsable deja una fila** con la duración de la fase que termina.
+No se recalcula recorriendo historial — la duración se guarda en el momento del
+cambio, así que las métricas salen de un `AVG` directo.
+
+De ahí salen cuatro medidas:
+
+| Medida | De dónde sale |
+|---|---|
+| Tiempo promedio de resolución | `created_at` → `completada_en` de las tareas cerradas |
+| Más rápida y más lenta | mínimo y máximo de lo mismo |
+| Tiempo promedio por fase | promedio de `duracion_segundos` agrupado por `estado_desde` |
+| Traspasos por tarea | cuántas veces cambió de responsable |
+| Tiempo retenido por persona | suma de `duracion_segundos` por `responsable_desde_id` |
+
+El detalle de cada tarea muestra la línea de tiempo completa: qué fase, cuánto
+duró, de quién a quién pasó, cuándo y quién registró el cambio. Es lo que
+responde “¿dónde se nos va el tiempo?” en lugar de solo “¿cuánto tardó?”.
+
+El cambio de estado o responsable se registra desde esa misma pantalla, y exige
+el permiso `tareas.avanzar`. Las métricas de tiempos exigen `tareas.metricas`,
+que por defecto tienen Administrador y Supervisor pero no Analista.
+
 ## Seguridad
 
 - Contraseñas en **bcrypt** coste 12. Nunca en claro, ni en la base, ni en la
@@ -145,7 +175,9 @@ scripts/crear-admin.js   alta del primer administrador
 public/              pantallas (HTML + JS sin framework)
   app.css            tokens de color, claro y oscuro
   app.js             sesión, permisos, cliente SSE, barra lateral y utilidades
-  Login · Reportes · Matriz · Usuarios · Cargos · Auditoria
+  Login · Reportes · Matriz · Calendario · Usuarios · Cargos · Auditoria
+db/migracion-*.sql   cambios de esquema posteriores, aplicados en orden por init-db
+pruebas/             pruebas de API y de actualización en vivo
 ```
 
 ## Pendiente de definir con el oficial de cumplimiento

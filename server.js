@@ -597,6 +597,206 @@ async function api(req, res, url) {
     return json(res, filas);
   }
 
+  // ---- Calendario: tareas y controles agendados ----------------------------
+  const ESTADOS_TAREA = ['Pendiente','En proceso','En revision','Completada','Cancelada'];
+
+  const SELECT_TAREA = `
+    SELECT t.*, u.nombre AS responsable_nombre, r.codigo AS riesgo_codigo,
+           c.descripcion AS control_descripcion,
+           (SELECT COUNT(*) FROM tarea_traspasos x
+             WHERE x.tarea_id = t.id AND x.cambio_responsable = 1) AS traspasos
+      FROM tareas t
+      LEFT JOIN usuarios  u ON u.id = t.responsable_id
+      LEFT JOIN riesgos   r ON r.id = t.riesgo_id
+      LEFT JOIN controles c ON c.id = t.control_id`;
+
+  if (rec[0] === 'tareas' && rec[1] === 'metricas' && metodo === 'GET') {
+    const s = await exigir(req, res, 'tareas.metricas'); if (!s) return;
+
+    const [[resolucion]] = await DB.query(
+      `SELECT COUNT(*) AS completadas,
+              AVG(TIMESTAMPDIFF(SECOND, created_at, completada_en)) AS promedio_seg,
+              MIN(TIMESTAMPDIFF(SECOND, created_at, completada_en)) AS minimo_seg,
+              MAX(TIMESTAMPDIFF(SECOND, created_at, completada_en)) AS maximo_seg
+         FROM tareas WHERE completada_en IS NOT NULL`);
+
+    // Cuanto dura cada etapa: el promedio de las fases que terminaron en ella.
+    const [porFase] = await DB.query(
+      `SELECT estado_desde AS fase, COUNT(*) AS veces,
+              AVG(duracion_segundos) AS promedio_seg,
+              MAX(duracion_segundos) AS maximo_seg
+         FROM tarea_traspasos
+        WHERE estado_desde IS NOT NULL AND duracion_segundos IS NOT NULL
+        GROUP BY estado_desde`);
+
+    // Cuanto tiempo retuvo cada persona el trabajo antes de soltarlo.
+    const [porResponsable] = await DB.query(
+      `SELECT u.id, u.nombre, COUNT(*) AS tramos,
+              AVG(tt.duracion_segundos) AS promedio_seg,
+              SUM(tt.duracion_segundos) AS total_seg
+         FROM tarea_traspasos tt JOIN usuarios u ON u.id = tt.responsable_desde_id
+        WHERE tt.duracion_segundos IS NOT NULL
+        GROUP BY u.id ORDER BY total_seg DESC`);
+
+    const [[traspasos]] = await DB.query(
+      `SELECT COALESCE(AVG(n),0) AS promedio_por_tarea, COALESCE(MAX(n),0) AS maximo
+         FROM (SELECT COUNT(*) AS n FROM tarea_traspasos
+                WHERE cambio_responsable = 1 GROUP BY tarea_id) x`);
+
+    const [[agenda]] = await DB.query(
+      `SELECT COUNT(*) AS total,
+              SUM(estado IN ('Pendiente','En proceso','En revision')) AS abiertas,
+              SUM(estado NOT IN ('Completada','Cancelada')
+                  AND COALESCE(fecha_limite, fecha_programada) < CURDATE()) AS vencidas,
+              SUM(estado = 'Completada') AS completadas
+         FROM tareas`);
+
+    return json(res, { resolucion, porFase, porResponsable, traspasos, agenda,
+                       estados: ESTADOS_TAREA });
+  }
+
+  if (rec[0] === 'tareas' && rec.length === 1 && metodo === 'GET') {
+    const s = await exigir(req, res, 'tareas.ver'); if (!s) return;
+    const cond = [], args = [];
+    if (q.get('desde')) { cond.push('t.fecha_programada >= ?'); args.push(q.get('desde')); }
+    if (q.get('hasta')) { cond.push('t.fecha_programada <= ?'); args.push(q.get('hasta')); }
+    if (q.get('estado')) { cond.push('t.estado = ?'); args.push(q.get('estado')); }
+    if (q.get('responsable')) { cond.push('t.responsable_id = ?'); args.push(q.get('responsable')); }
+    if (q.get('tipo')) { cond.push('t.tipo = ?'); args.push(q.get('tipo')); }
+    const where = cond.length ? ` WHERE ${cond.join(' AND ')}` : '';
+    const [filas] = await DB.query(
+      `${SELECT_TAREA}${where} ORDER BY t.fecha_programada, t.prioridad DESC, t.id`, args);
+    return json(res, filas);
+  }
+
+  if (rec[0] === 'tareas' && rec.length === 2 && metodo === 'GET') {
+    const s = await exigir(req, res, 'tareas.ver'); if (!s) return;
+    const [[t]] = await DB.query(`${SELECT_TAREA} WHERE t.id = ?`, [rec[1]]);
+    if (!t) return err(res, 'Tarea no encontrada', 404);
+    const [traspasos] = await DB.query(
+      `SELECT tt.*, ud.nombre AS responsable_desde, uh.nombre AS responsable_hasta,
+              uq.nombre AS usuario_nombre
+         FROM tarea_traspasos tt
+         LEFT JOIN usuarios ud ON ud.id = tt.responsable_desde_id
+         LEFT JOIN usuarios uh ON uh.id = tt.responsable_hasta_id
+         LEFT JOIN usuarios uq ON uq.id = tt.usuario_id
+        WHERE tt.tarea_id = ? ORDER BY tt.id`, [rec[1]]);
+    return json(res, { ...t, traspasos });
+  }
+
+  if (rec[0] === 'tareas' && rec.length === 1 && metodo === 'POST') {
+    const s = await exigir(req, res, 'tareas.crear'); if (!s) return;
+    const b = await body(req);
+    if (!String(b.titulo || '').trim()) return err(res, 'El titulo es obligatorio', 400);
+    if (!b.fecha_programada) return err(res, 'La fecha programada es obligatoria', 400);
+    if (b.fecha_limite && b.fecha_limite < b.fecha_programada)
+      return err(res, 'La fecha limite no puede ser anterior a la programada', 400);
+
+    const cx = await DB.getConnection();
+    try {
+      await cx.beginTransaction();
+      const [r] = await cx.query(
+        `INSERT INTO tareas (codigo, titulo, descripcion, tipo, riesgo_id, control_id,
+            fecha_programada, fecha_limite, prioridad, estado, responsable_id, creado_por)
+         VALUES (?,?,?,?,?,?,?,?,?,'Pendiente',?,?)`,
+        [b.codigo || `T-${Date.now().toString().slice(-8)}`, b.titulo, b.descripcion || null,
+         b.tipo === 'Control' ? 'Control' : 'Tarea', b.riesgo_id || null, b.control_id || null,
+         b.fecha_programada, b.fecha_limite || null, b.prioridad || 'Media',
+         b.responsable_id || null, s.id]);
+      // Primer traspaso: deja el punto de partida del que se miden las fases.
+      await cx.query(
+        `INSERT INTO tarea_traspasos (tarea_id, estado_desde, estado_hasta,
+            responsable_hasta_id, cambio_estado, cambio_responsable, usuario_id, nota)
+         VALUES (?, NULL, 'Pendiente', ?, 1, ?, ?, 'Alta de la tarea')`,
+        [r.insertId, b.responsable_id || null, b.responsable_id ? 1 : 0, s.id]);
+      await cx.commit();
+      await auditar('tarea_creada', { entidad: 'tarea', entidadId: r.insertId, s, req,
+                                      detalle: { titulo: b.titulo } });
+      emitir('tareas', { accion: 'alta', id: r.insertId });
+      return json(res, { id: r.insertId }, 201);
+    } catch (e) {
+      await cx.rollback();
+      if (e.code === 'ER_DUP_ENTRY') return err(res, 'Ya existe una tarea con ese codigo', 409);
+      throw e;
+    } finally { cx.release(); }
+  }
+
+  if (rec[0] === 'tareas' && rec.length === 2 && metodo === 'PUT') {
+    const s = await exigir(req, res, 'tareas.editar'); if (!s) return;
+    const b = await body(req);
+    if (b.fecha_limite && b.fecha_limite < b.fecha_programada)
+      return err(res, 'La fecha limite no puede ser anterior a la programada', 400);
+    const [r] = await DB.query(
+      `UPDATE tareas SET titulo=?, descripcion=?, tipo=?, riesgo_id=?, control_id=?,
+              fecha_programada=?, fecha_limite=?, prioridad=? WHERE id=?`,
+      [b.titulo, b.descripcion || null, b.tipo === 'Control' ? 'Control' : 'Tarea',
+       b.riesgo_id || null, b.control_id || null, b.fecha_programada,
+       b.fecha_limite || null, b.prioridad || 'Media', rec[1]]);
+    if (!r.affectedRows) return err(res, 'Tarea no encontrada', 404);
+    await auditar('tarea_editada', { entidad: 'tarea', entidadId: Number(rec[1]), s, req });
+    emitir('tareas', { accion: 'edicion', id: Number(rec[1]) });
+    return json(res, { ok: true });
+  }
+
+  // El cambio de estado o de responsable es lo que cierra una fase y abre otra.
+  if (rec[0] === 'tareas' && rec.length === 3 && rec[2] === 'avanzar' && metodo === 'POST') {
+    const s = await exigir(req, res, 'tareas.avanzar'); if (!s) return;
+    const b = await body(req);
+    const [[t]] = await DB.query(
+      'SELECT estado, responsable_id, created_at, iniciada_en FROM tareas WHERE id=?', [rec[1]]);
+    if (!t) return err(res, 'Tarea no encontrada', 404);
+
+    const estadoNuevo = b.estado || t.estado;
+    const respNuevo = b.responsable_id === undefined
+      ? t.responsable_id : (b.responsable_id || null);
+    if (!ESTADOS_TAREA.includes(estadoNuevo)) return err(res, 'Estado invalido', 400);
+
+    const cambioEstado = estadoNuevo !== t.estado;
+    const cambioResp = Number(respNuevo || 0) !== Number(t.responsable_id || 0);
+    if (!cambioEstado && !cambioResp)
+      return err(res, 'No hay ningun cambio que registrar', 400);
+
+    // La fase que termina arranco en el ultimo traspaso, o en el alta.
+    const [[ultimo]] = await DB.query(
+      'SELECT created_at FROM tarea_traspasos WHERE tarea_id=? ORDER BY id DESC LIMIT 1', [rec[1]]);
+    const desde = new Date(String(ultimo?.created_at || t.created_at).replace(' ', 'T'));
+    const duracion = Math.max(0, Math.round((Date.now() - desde.getTime()) / 1000));
+
+    const cx = await DB.getConnection();
+    try {
+      await cx.beginTransaction();
+      await cx.query(
+        `INSERT INTO tarea_traspasos (tarea_id, estado_desde, estado_hasta,
+            responsable_desde_id, responsable_hasta_id, cambio_estado, cambio_responsable,
+            duracion_segundos, nota, usuario_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        [rec[1], t.estado, estadoNuevo, t.responsable_id, respNuevo,
+         cambioEstado ? 1 : 0, cambioResp ? 1 : 0, duracion, b.nota || null, s.id]);
+
+      await cx.query(
+        `UPDATE tareas SET estado=?, responsable_id=?,
+                iniciada_en = COALESCE(iniciada_en, CASE WHEN ? = 'En proceso' THEN NOW() END),
+                completada_en = CASE WHEN ? = 'Completada' THEN NOW() ELSE NULL END
+           WHERE id=?`,
+        [estadoNuevo, respNuevo, estadoNuevo, estadoNuevo, rec[1]]);
+      await cx.commit();
+    } catch (e) { await cx.rollback(); throw e; }
+    finally { cx.release(); }
+
+    await auditar('tarea_avanzada', { entidad: 'tarea', entidadId: Number(rec[1]), s, req,
+      detalle: { de: t.estado, a: estadoNuevo, cambioResp, duracion } });
+    emitir('tareas', { accion: 'avance', id: Number(rec[1]), estado: estadoNuevo });
+    return json(res, { ok: true, duracion_segundos: duracion });
+  }
+
+  if (rec[0] === 'tareas' && rec.length === 2 && metodo === 'DELETE') {
+    const s = await exigir(req, res, 'tareas.eliminar'); if (!s) return;
+    await DB.query('DELETE FROM tareas WHERE id=?', [rec[1]]);
+    await auditar('tarea_eliminada', { entidad: 'tarea', entidadId: Number(rec[1]), s, req });
+    emitir('tareas', { accion: 'baja', id: Number(rec[1]) });
+    return json(res, { ok: true });
+  }
+
   return err(res, 'Ruta no encontrada', 404);
 }
 

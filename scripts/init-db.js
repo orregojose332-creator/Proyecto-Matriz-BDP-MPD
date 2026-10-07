@@ -41,9 +41,13 @@ function preguntar(texto) {
   }
 
   await cx.changeUser({ database: NOMBRE });
-  for (const archivo of ['schema.sql', 'seed.sql']) {
-    const sql = fs.readFileSync(path.join(__dirname, '..', 'db', archivo), 'utf8');
-    await cx.query(sql);
+  const dirDb = path.join(__dirname, '..', 'db');
+  // Las migraciones se aplican en orden alfabetico despues del seed, de modo
+  // que agregar una funcionalidad es dejar un archivo nuevo en db/.
+  const migraciones = fs.readdirSync(dirDb)
+    .filter(n => /^migracion-.*\.sql$/.test(n)).sort();
+  for (const archivo of ['schema.sql', 'seed.sql', ...migraciones]) {
+    await cx.query(fs.readFileSync(path.join(dirDb, archivo), 'utf8'));
     console.log(`  ${archivo} aplicado.`);
   }
   await cx.end();
