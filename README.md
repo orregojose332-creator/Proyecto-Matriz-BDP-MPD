@@ -20,26 +20,87 @@ SEPRELAD en Paraguay.
   cada fase del trabajo y cuántas manos pasa.
 - **Bitácora de auditoría** de quién hizo qué y cuándo.
 
-## Instalación
+## Instalación en una PC nueva
 
-Requiere **Node 18 o superior** y **MySQL/MariaDB** (sirve el de XAMPP).
+Lo que hace falta en esa máquina:
+
+| | |
+|---|---|
+| **Node.js 18 o superior** | https://nodejs.org — la versión LTS |
+| **MySQL o MariaDB** | El de **XAMPP** sirve; alcanza con arrancar MySQL desde su panel |
+| **Git** (opcional) | Solo si va a traer el código clonando el repositorio |
+
+### Pasos
 
 ```bash
+# 1. Traer el código
+git clone https://github.com/orregojose332-creator/Matriz-MDP.git
+cd Matriz-MDP
+
+# 2. Instalar las dependencias (necesita internet una sola vez)
 npm install
-cp .env.example .env        # completar, sobre todo JWT_SECRET
-npm run init-db             # crea la base, las tablas y los catálogos
-npm run crear-admin         # crea el primer administrador
-npm start                   # http://localhost:3100
+
+# 3. Preparar la configuración
+copy .env.example .env        # en Windows
+# cp .env.example .env        # en Linux o macOS
 ```
 
-Para generar el `JWT_SECRET`:
+Abrir `.env` y completar dos cosas:
+
+- `DB_USER` y `DB_PASSWORD` según su MySQL. En XAMPP recién instalado suele ser
+  usuario `root` sin contraseña, que es lo que el archivo ya trae.
+- `JWT_SECRET`, que **no puede quedar vacío**: sin esa clave el servidor no
+  arranca, porque cualquiera podría fabricarse un token de administrador.
+  Generar una propia con:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-El servidor **no arranca sin esa clave**: sin ella cualquiera podría fabricarse
-un token de administrador.
+```bash
+# 4. Crear la base, las tablas y los catálogos
+npm run init-db
+
+# 5. Crear el primer administrador (pide nombre, usuario, correo y contraseña)
+npm run crear-admin
+
+# 6. Arrancar
+npm start
+```
+
+Queda en **http://localhost:3100**.
+
+> **MySQL tiene que estar corriendo antes del paso 4.** Si usa XAMPP, abra el
+> panel de control y arranque MySQL. El error típico cuando no lo está es
+> `ECONNREFUSED 127.0.0.1:3306`.
+
+### Si ya tenía una versión instalada
+
+`npm run init-db` **borra todas las tablas y los datos**, y por eso pide
+confirmación escribiendo `BORRAR`. Para conservar lo cargado y solo incorporar
+lo nuevo, aplique únicamente las migraciones:
+
+```bash
+mysql -u root matriz_mdp < db/migracion-01-calendario.sql
+```
+
+### Para que entren desde otras computadoras
+
+El servidor ya escucha en todas las interfaces de red. En los demás equipos se
+entra por `http://<IP-de-esta-PC>:3100`.
+
+```bash
+ipconfig        # en Windows, buscar "Dirección IPv4"
+ip addr         # en Linux
+```
+
+Falta un paso más: **abrir el puerto 3100 en el firewall** de la PC que hace de
+servidor. En Windows, *Firewall de Windows Defender → Reglas de entrada → Nueva
+regla → Puerto → TCP 3100 → Permitir*. Es la causa más frecuente de que "no
+funcione" sin ningún mensaje de error claro.
+
+Esa PC **no puede suspenderse**: si se duerme, se corta la base y los flujos en
+vivo de todos los usuarios.
 
 ## Cargos que vienen cargados
 
