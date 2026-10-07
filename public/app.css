@@ -25,7 +25,11 @@
 
   --radio: 10px;
   --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --lateral: 228px;        /* ancho de la barra de modulos, expandida */
+  --lateral-min: 60px;     /* contraida: solo iconos */
+  --alto-barra: 57px;
 }
+:root[data-lateral="contraida"] { --lateral: var(--lateral-min); }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
@@ -52,20 +56,53 @@ a { color: var(--serie-1); }
 
 /* ─── Barra superior ─────────────────────────────────────────────────────── */
 header.barra {
-  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
-  padding: 0 20px; height: 56px;
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 10px 16px; min-height: var(--alto-barra);
   background: var(--surface-1); border-bottom: 1px solid var(--borde);
-  position: sticky; top: 0; z-index: 20;
+  position: sticky; top: 0; z-index: 40;
 }
 .marca { font-weight: 700; font-size: 15px; letter-spacing: .2px; white-space: nowrap; }
-nav.menu { display: flex; gap: 2px; flex: 1; flex-wrap: wrap; }
-nav.menu a {
-  padding: 7px 12px; border-radius: 8px; text-decoration: none;
-  color: var(--ink-2); font-weight: 500; white-space: nowrap;
+.sesion { display: flex; align-items: center; gap: 10px; font-size: 13px;
+          color: var(--ink-2); margin-left: auto; }
+
+/* Hamburguesa: contrae la barra de modulos a solo iconos, y en pantalla
+   angosta abre y cierra el cajon. */
+.hamburguesa {
+  display: grid; place-items: center; width: 36px; height: 36px; flex: none;
+  padding: 0; border: 1px solid var(--borde); border-radius: 9px;
+  background: var(--surface-1); color: var(--ink-1); cursor: pointer;
 }
-nav.menu a:hover { background: var(--plane); color: var(--ink-1); }
-nav.menu a[aria-current="page"] { background: var(--serie-1); color: #fff; }
-.sesion { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
+.hamburguesa:hover { background: var(--plane); }
+.hamburguesa svg { width: 19px; height: 19px; }
+
+/* ─── Barra lateral de modulos ───────────────────────────────────────────── */
+.cuerpo { display: flex; align-items: flex-start; }
+.lateral {
+  position: sticky; top: var(--alto-barra); flex: none;
+  width: var(--lateral); height: calc(100vh - var(--alto-barra));
+  background: var(--surface-1); border-right: 1px solid var(--borde);
+  padding: 14px 10px; overflow-x: hidden; overflow-y: auto;
+  transition: width .18s ease;
+}
+.lateral .titulo {
+  margin: 0; padding: 0 10px 8px; white-space: nowrap;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--ink-muted);
+}
+.lateral nav { display: flex; flex-direction: column; gap: 3px; }
+.lateral a {
+  display: flex; align-items: center; gap: 12px; padding: 10px;
+  border-radius: 9px; text-decoration: none; white-space: nowrap;
+  color: var(--ink-2); font-weight: 500; font-size: 13.5px;
+}
+.lateral a:hover { background: var(--plane); color: var(--ink-1); }
+.lateral a[aria-current="page"] { background: var(--serie-1); color: #fff; }
+.lateral a svg { width: 20px; height: 20px; flex: none; }
+.lateral a .texto { overflow: hidden; text-overflow: ellipsis; }
+:root[data-lateral="contraida"] .lateral .titulo,
+:root[data-lateral="contraida"] .lateral a .texto { display: none; }
+:root[data-lateral="contraida"] .lateral a { justify-content: center; padding: 10px 0; }
+
+.velo { display: none; }
 
 /* Indicador de conexion en vivo */
 .vivo { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-muted); }
@@ -76,7 +113,7 @@ nav.menu a[aria-current="page"] { background: var(--serie-1); color: #fff; }
 @keyframes latido { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
 @media (prefers-reduced-motion: reduce) { .vivo .punto { animation: none } }
 
-main { max-width: 1280px; margin: 0 auto; padding: 20px; }
+main { flex: 1; min-width: 0; max-width: 1280px; margin: 0 auto; padding: 20px 16px 40px; }
 h1 { font-size: 20px; margin: 0 0 4px; }
 h2 { font-size: 15px; margin: 0 0 14px; font-weight: 600; }
 .sub { color: var(--ink-2); margin: 0 0 20px; }
@@ -87,8 +124,8 @@ h2 { font-size: 15px; margin: 0 0 14px; font-weight: 600; }
   border-radius: var(--radio); padding: 18px;
 }
 .rejilla { display: grid; gap: 16px; }
-.kpis { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom: 16px; }
-.graficos { grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); }
+.kpis { grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); margin-bottom: 16px; }
+.graficos { grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr)); }
 
 .kpi .etiqueta { font-size: 12px; color: var(--ink-2); text-transform: uppercase; letter-spacing: .4px; }
 .kpi .valor { font-size: 32px; font-weight: 700; line-height: 1.15; margin-top: 6px; }
@@ -124,7 +161,7 @@ input, select, textarea {
 }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--serie-1); outline-offset: 1px; }
 .campo { margin-bottom: 14px; }
-.fila { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.fila { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); }
 
 button {
   font: inherit; font-weight: 600; padding: 8px 16px; border-radius: 8px;
@@ -166,16 +203,27 @@ svg text { font-family: var(--sans); }
 .login-caja h1 { text-align: center; margin-bottom: 6px; }
 .login-caja .sub { text-align: center; font-size: 13px; }
 
+/* En pantalla angosta la lateral se vuelve un cajon que se desliza sobre el
+   contenido; ahi siempre muestra los nombres, porque hay espacio de sobra. */
+@media (max-width: 860px) {
+  .lateral {
+    position: fixed; left: 0; top: var(--alto-barra); z-index: 35; width: 228px;
+    transform: translateX(-102%); transition: transform .2s ease;
+    box-shadow: 0 8px 28px rgba(0,0,0,.18);
+  }
+  :root[data-cajon="abierto"] .lateral { transform: none; }
+  :root[data-cajon="abierto"] .velo {
+    display: block; position: fixed; inset: 0; z-index: 34; background: rgba(0,0,0,.35);
+  }
+  :root[data-lateral="contraida"] .lateral .titulo,
+  :root[data-lateral="contraida"] .lateral a .texto { display: revert; }
+  :root[data-lateral="contraida"] .lateral a { justify-content: flex-start; padding: 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .lateral { transition: none; } }
+
 @media (max-width: 640px) {
-  /* En pantalla angosta la barra se apila: marca, menu y sesion en su propia
-     linea, en lugar de envolverse unas sobre otras. */
-  header.barra { height: auto; padding: 10px 14px; flex-direction: column;
-                 align-items: stretch; gap: 8px; }
-  header.barra .marca { font-size: 16px; }
-  nav.menu { gap: 4px; overflow-x: auto; padding-bottom: 2px; }
-  nav.menu a { padding: 6px 10px; font-size: 13px; }
-  .sesion { justify-content: space-between; }
-  .vivo { align-self: flex-start; }
+  header.barra { padding: 10px 14px; }
+  .sesion { gap: 8px; font-size: 12px; }
   main { padding: 14px; }
   .kpi .valor { font-size: 26px; }
   table { font-size: 12px; }

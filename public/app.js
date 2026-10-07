@@ -136,23 +136,43 @@ const MDP = (() => {
     })(),
   };
 
-  // ─── Barra superior ──────────────────────────────────────────────────────
+  // ─── Barra superior y barra lateral ──────────────────────────────────────
+  // Un icono por modulo, al trazo, para que tome el color del tema:
+  // barras = tablero, cuadricula = matriz, personas = usuarios,
+  // escudo = permisos, documento = bitacora.
+  const ICONOS = {
+    tablero:   '<path d="M4 19V11"/><path d="M10 19V5"/><path d="M16 19v-6"/><path d="M2 21h20"/>',
+    matriz:    '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>',
+    usuarios:  '<path d="M16 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20"/><circle cx="9" cy="7" r="3.2"/>'
+             + '<path d="M17.5 14.2A4 4 0 0 1 21 18.1V20"/><path d="M15.8 4.3a3.2 3.2 0 0 1 0 5.9"/>',
+    cargos:    '<path d="M12 2.8 20 6v5.6c0 4.5-3.2 8.2-8 9.6-4.8-1.4-8-5.1-8-9.6V6l8-3.2Z"/>'
+             + '<path d="m8.8 12.2 2.3 2.3 4.3-4.6"/>',
+    auditoria: '<path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>'
+             + '<path d="M14 3v5h5"/><path d="M9.5 13h6M9.5 17h4"/>',
+  };
+  const icono = id => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
+    aria-hidden="true">${ICONOS[id] || ''}</svg>`;
+
   const PAGINAS = [
-    { href: 'Reportes.html', texto: 'Tablero',   permiso: 'reportes.ver' },
-    { href: 'Matriz.html',   texto: 'Matriz',    permiso: 'riesgos.ver' },
-    { href: 'Usuarios.html', texto: 'Usuarios',  permiso: 'usuarios.gestionar' },
-    { href: 'Cargos.html',   texto: 'Cargos',    permiso: 'cargos.gestionar' },
-    { href: 'Auditoria.html',texto: 'Auditoria', permiso: 'auditoria.ver' },
+    { id: 'tablero',   href: 'Reportes.html',  texto: 'Tablero',   permiso: 'reportes.ver' },
+    { id: 'matriz',    href: 'Matriz.html',    texto: 'Matriz',    permiso: 'riesgos.ver' },
+    { id: 'usuarios',  href: 'Usuarios.html',  texto: 'Usuarios',  permiso: 'usuarios.gestionar' },
+    { id: 'cargos',    href: 'Cargos.html',    texto: 'Cargos',    permiso: 'cargos.gestionar' },
+    { id: 'auditoria', href: 'Auditoria.html', texto: 'Auditoria', permiso: 'auditoria.ver' },
   ];
 
   function barra() {
     const actual = location.pathname.split('/').pop();
-    const enlaces = PAGINAS.filter(p => puede(p.permiso)).map(p =>
-      `<a href="${p.href}"${p.href === actual ? ' aria-current="page"' : ''}>${p.texto}</a>`).join('');
+
     document.body.insertAdjacentHTML('afterbegin', `
       <header class="barra">
+        <button class="hamburguesa" id="hamburguesa" aria-controls="lateral"
+                aria-expanded="true" aria-label="Contraer o expandir los modulos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
         <span class="marca">Matriz MDP</span>
-        <nav class="menu">${enlaces}</nav>
         <span class="vivo" data-estado="cortado" title="Las pantallas se actualizan solas">
           <span class="punto"></span><span class="txt">Conectando</span>
         </span>
@@ -161,7 +181,74 @@ const MDP = (() => {
           <button id="btn-salir">Salir</button>
         </span>
       </header>`);
+
+    // El title es lo unico que queda al contraer la lateral, cuando solo hay icono.
+    const enlaces = PAGINAS.filter(p => puede(p.permiso)).map(p => `
+      <a href="${p.href}" title="${p.texto}"${p.href === actual ? ' aria-current="page"' : ''}>
+        ${icono(p.id)}<span class="texto">${p.texto}</span>
+      </a>`).join('');
+
+    // Envuelve el <main> que ya trae la pagina, sin que cada pantalla cambie.
+    const principal = document.querySelector('main');
+    const cuerpo = document.createElement('div');
+    cuerpo.className = 'cuerpo';
+    cuerpo.innerHTML = `
+      <aside class="lateral" id="lateral">
+        <p class="titulo">Modulos</p>
+        <nav>${enlaces}</nav>
+      </aside>
+      <div class="velo" id="velo"></div>`;
+    principal.parentNode.insertBefore(cuerpo, principal);
+    cuerpo.appendChild(principal);
+
     document.getElementById('btn-salir').onclick = () => salir();
+    medirBarra();
+    conectarHamburguesa();
+  }
+
+  /** La barra superior cambia de alto cuando sus elementos se envuelven en
+   *  pantalla angosta. La lateral se ancla debajo, asi que su desplazamiento
+   *  se mide en vivo en lugar de fijarlo a un valor que solo vale a un ancho. */
+  function medirBarra() {
+    const cabecera = document.querySelector('header.barra');
+    if (!cabecera) return;
+    const aplicar = () => document.documentElement.style.setProperty(
+      '--alto-barra', Math.round(cabecera.getBoundingClientRect().height) + 'px');
+    aplicar();
+    if (window.ResizeObserver) new ResizeObserver(aplicar).observe(cabecera);
+    else window.addEventListener('resize', aplicar);
+  }
+
+  /** La preferencia de ancho se recuerda por navegador y sobrevive al cambio
+   *  de pagina; es una comodidad de cada usuario, no estado del sistema. */
+  function conectarHamburguesa() {
+    const raiz = document.documentElement;
+    const boton = document.getElementById('hamburguesa');
+    const angosta = () => window.matchMedia('(max-width: 860px)').matches;
+    const cerrarCajon = () => raiz.removeAttribute('data-cajon');
+
+    try {
+      if (localStorage.getItem('mdp_lateral') === 'contraida') raiz.dataset.lateral = 'contraida';
+    } catch { /* almacenamiento bloqueado: queda expandida */ }
+    boton.setAttribute('aria-expanded', String(raiz.dataset.lateral !== 'contraida'));
+
+    boton.addEventListener('click', () => {
+      if (angosta()) {
+        const abierto = raiz.dataset.cajon === 'abierto';
+        if (abierto) cerrarCajon(); else raiz.dataset.cajon = 'abierto';
+        boton.setAttribute('aria-expanded', String(!abierto));
+        return;
+      }
+      const contraida = raiz.dataset.lateral === 'contraida';
+      if (contraida) raiz.removeAttribute('data-lateral');
+      else raiz.dataset.lateral = 'contraida';
+      boton.setAttribute('aria-expanded', String(contraida));
+      try { localStorage.setItem('mdp_lateral', contraida ? 'expandida' : 'contraida'); } catch {}
+    });
+
+    document.getElementById('velo').addEventListener('click', cerrarCajon);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarCajon(); });
+    window.addEventListener('resize', () => { if (!angosta()) cerrarCajon(); });
   }
 
   /** Arranca la pagina: valida sesion, dibuja la barra y abre el flujo en vivo.

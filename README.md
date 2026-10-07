@@ -84,6 +84,19 @@ Los umbrales y el tope están en `server.js` (`UMBRALES`, `MITIGACION_MAXIMA`), 
 un solo lugar, y el servidor los expone en `/api/catalogos` para que el frontend
 no los duplique.
 
+## Navegación
+
+Los módulos viven en una barra lateral izquierda, cada uno con su icono. El
+botón de hamburguesa la contrae a solo iconos para ganar ancho de contenido, y
+la preferencia se recuerda en el navegador de cada usuario, así que sobrevive
+al cambio de pantalla.
+
+Por debajo de 860px de ancho la lateral pasa a ser un cajón que se desliza
+sobre el contenido; se cierra al tocar fuera, con Escape o al elegir un módulo.
+
+La lateral solo lista los módulos que el cargo del usuario puede abrir, pero eso
+es comodidad visual: el permiso se verifica igual en el servidor.
+
 ## Seguridad
 
 - Contraseñas en **bcrypt** coste 12. Nunca en claro, ni en la base, ni en la
@@ -107,7 +120,7 @@ scripts/init-db.js   crea la base y aplica schema + seed
 scripts/crear-admin.js   alta del primer administrador
 public/              pantallas (HTML + JS sin framework)
   app.css            tokens de color, claro y oscuro
-  app.js             sesión, permisos, cliente SSE y utilidades
+  app.js             sesión, permisos, cliente SSE, barra lateral y utilidades
   Login · Reportes · Matriz · Usuarios · Cargos · Auditoria
 ```
 
