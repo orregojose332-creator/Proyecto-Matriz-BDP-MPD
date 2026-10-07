@@ -62,6 +62,30 @@ cuando se cortó; el navegador reintenta solo cada 3 segundos.
 
 No se usa *polling*: no hay consultas repetidas contra la base cuando no pasa nada.
 
+**El flujo no guarda historial**: los eventos emitidos mientras un cliente estaba
+desconectado no se le reenvían. Por eso, al reconectar —y al volver la pestaña a
+primer plano, que es cuando el móvil suele haber cerrado el flujo— cada pantalla
+vuelve a pedir sus datos, en lugar de quedarse con lo que mostraba antes del corte
+hasta que llegue el próximo evento.
+
+Medido con dos navegadores contra el mismo servidor (`pruebas/dos-usuarios.js`):
+un alta hecha por un usuario aparece en la pantalla de otro en **unos 330 ms**.
+`pruebas/corte.js` reinicia el servidor con un cliente conectado y comprueba que
+ese cliente se resincroniza solo.
+
+### Si lo publica en una red local
+
+El servidor escucha en todas las interfaces, así que los demás equipos entran por
+`http://<IP-de-la-PC>:3100`. Tres cosas a tener en cuenta:
+
+- **Abrir el puerto en el firewall** del equipo que hace de servidor.
+- **El equipo no puede suspenderse**: si se duerme, se cortan todos los flujos.
+  Los clientes mostrarán *Reconectando* y se recuperarán al volver.
+- **Límite de conexiones del navegador**: sobre HTTP/1.1 cada navegador admite
+  unas 6 conexiones simultáneas por origen, y cada pestaña abierta consume una
+  para su flujo. Con 6 o más pestañas del sistema abiertas a la vez, la última
+  se queda esperando. Sirviendo por HTTPS con HTTP/2 el límite desaparece.
+
 ## Metodología de cálculo
 
 ```

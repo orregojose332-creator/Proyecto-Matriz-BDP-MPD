@@ -45,7 +45,7 @@ const MDP = (() => {
   // importan y vuelve a pedir sus datos, de modo que nadie refresca a mano.
   const vivo = (() => {
     const oyentes = new Map();        // evento -> Set(callback)
-    let fuente = null, indicador = null;
+    let fuente = null, indicador = null, abierta = false;
 
     function estado(valor) {
       if (!indicador) indicador = document.querySelector('.vivo');
@@ -63,8 +63,20 @@ const MDP = (() => {
       document.cookie = `mdp_token=${encodeURIComponent(token() || '')}; path=/; SameSite=Lax`;
       fuente = new EventSource('/api/eventos');
 
-      fuente.onopen  = () => estado('conectado');
+      fuente.onopen = () => {
+        const reconexion = abierta === false && fuente.__yaEstuvoAbierta;
+        abierta = true;
+        fuente.__yaEstuvoAbierta = true;
+        estado('conectado');
+        // Los eventos emitidos mientras no habia conexion no se recuperan: el
+        // flujo no guarda historial. Asi que al reconectar cada pantalla vuelve
+        // a pedir sus datos, en lugar de quedarse con lo que mostraba antes del
+        // corte hasta que llegue el proximo evento.
+        if (reconexion) resincronizar('reconexion');
+      };
+
       fuente.onerror = () => {
+        abierta = false;
         estado('cortado');
         // EventSource reintenta solo (retry: 3000 lo fija el servidor).
       };
@@ -78,8 +90,27 @@ const MDP = (() => {
       }
     }
 
+    /** Ejecuta todas las recargas registradas, sin esperar un evento. */
+    function resincronizar(motivo) {
+      for (const fns of oyentes.values()) {
+        for (const fn of fns) {
+          try { fn({ motivo }); } catch (e) { console.error(e); }
+        }
+      }
+    }
+
+    // El navegador suspende las pestanas en segundo plano y puede cerrar el
+    // flujo sin avisar. Al volver a primer plano se comprueba el estado y, si
+    // hace falta, se reconecta; en cualquier caso se resincroniza.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible' || !fuente) return;
+      if (fuente.readyState === EventSource.CLOSED) conectar();
+      else resincronizar('volvio-al-frente');
+    });
+
     return {
       conectar,
+      resincronizar,
       /** al('riesgos', recargar) — ejecuta recargar() cuando algo cambie. */
       al(evento, fn) {
         if (!oyentes.has(evento)) oyentes.set(evento, new Set());
