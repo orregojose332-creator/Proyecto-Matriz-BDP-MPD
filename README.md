@@ -4,6 +4,44 @@ Sistema de **matriz de riesgos LD/FT** con usuarios, cargos, permisos, gráficos
 actualización en vivo. Construido sobre el enfoque basado en riesgos que exige
 SEPRELAD en Paraguay.
 
+## Estado del proyecto
+
+| | |
+|---|---|
+| **Repositorio** | https://github.com/orregojose332-creator/Proyecto-Matriz-BDP-MPD |
+| **Rama** | `main` |
+| **Vista previa** | https://claude.ai/artifact/SdzogmKoCiZdin81Q94TPy — maqueta navegable con datos de ejemplo, para decidir cómo debe verse; no es el sistema |
+| **Stack** | Node.js sin framework (`http` nativo) + MySQL/MariaDB + JavaScript de navegador sin framework |
+
+**Funcionando y probado**: usuarios, cargos y permisos; matriz con los cuatro
+factores y el cálculo inherente/residual; tablero con gráficos; actualización en
+vivo por SSE; calendario con medición de fases; apartados Riesgos y Tareas;
+Historial por riesgo; los tres tipos de tarea con casos reservados; respaldo y
+restauración; bitácora de auditoría.
+
+**Decisiones tomadas que conviene revisar con el área:**
+
+- Los **casos especiales nacen reservados**. Si conviene al revés —que nazcan
+  abiertos y se marquen a mano— se cambia el valor por defecto en el `POST
+  /api/tareas` de `server.js`.
+- **`Matriz` y `Riesgos` muestran los mismos datos** en dos formatos: la tabla
+  densa para análisis y exportación, y la ficha legible para el uso diario. Si
+  en la práctica resulta redundante, conviene fusionarlas en una sola pantalla.
+- La **ponderación de los factores, los subfactores y la resolución aplicable**
+  siguen pendientes de definición: ver la última sección.
+
+### Para seguir en otro chat
+
+Lo que necesita saber quien retome: el repositorio y la rama de la tabla de
+arriba, y que **este archivo es el punto de entrada** — describe la
+metodología, la navegación, cómo funciona la actualización en vivo, qué se
+versiona y qué no, y cómo se prueba. El código tiene comentarios donde una
+decisión no es obvia; lo que no está comentado es porque se lee solo.
+
+Conviene empezar por `server.js` (la API entera, en un archivo) y por
+`public/app.js` (sesión, permisos, cliente SSE y barra lateral, compartidos por
+todas las pantallas).
+
 ## Qué hace
 
 - **Matriz de riesgos** sobre los cuatro factores obligatorios: clientes,
@@ -42,8 +80,8 @@ Lo que hace falta en esa máquina:
 
 ```bash
 # 1. Traer el código
-git clone https://github.com/orregojose332-creator/Matriz-MDP.git
-cd Matriz-MDP
+git clone https://github.com/orregojose332-creator/Proyecto-Matriz-BDP-MPD.git
+cd Proyecto-Matriz-BDP-MPD
 
 # 2. Instalar las dependencias (necesita internet una sola vez)
 npm install
