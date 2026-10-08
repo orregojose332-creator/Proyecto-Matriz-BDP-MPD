@@ -25,7 +25,7 @@ const entrar = async (u, p) => (await llamar('/auth/login', { metodo: 'POST',
   let r = await llamar('/tareas', { metodo: 'POST', token: admin, cuerpo: {
     titulo: 'Verificar debida diligencia reforzada de clientes PEP',
     descripcion: 'Revisar los 12 expedientes PEP del trimestre',
-    tipo: 'Control', fecha_programada: hoy, fecha_limite: hoy,
+    tipo: 'Control programado', fecha_programada: hoy, fecha_limite: hoy,
     prioridad: 'Alta', responsable_id: usuarios[0].id } });
   ok(r.estado === 201, 'tarea agendada');
   const tarea = r.datos.id;

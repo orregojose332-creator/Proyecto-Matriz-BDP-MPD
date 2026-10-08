@@ -49,7 +49,10 @@
       <div><label for="f-estado">Estado</label><select id="f-estado"><option value="">Todos</option></select></div>
       <div><label for="f-resp">Responsable</label><select id="f-resp"><option value="">Todos</option></select></div>
       <div><label for="f-tipo">Tipo</label><select id="f-tipo">
-        <option value="">Todos</option><option>Tarea</option><option>Control</option></select></div>
+        <option value="">Todos</option>
+        <option value="Auditoria">Auditoría</option>
+        <option value="Control programado">Control programado</option>
+        <option value="Especial">Especial</option></select></div>
       <div><label for="f-buscar">Buscar</label><input id="f-buscar" placeholder="título o riesgo"></div>
       <div style="align-self:end"><label style="display:flex;gap:7px;align-items:center;font-size:13px;color:var(--ink-1);font-weight:400">
         <input type="checkbox" id="f-venc" style="width:auto"> Solo vencidas</label></div>
@@ -119,7 +122,9 @@
         ${vencida(t) ? '<span class="nivel" data-n="Critico">Vencida</span>' : ''}
       </div>
       <div class="meta">
-        <span>${ui.esc(t.tipo)} · prioridad ${ui.esc(t.prioridad)}</span>
+        <span>${ui.esc(t.tipo)}${t.categoria_especial ? ' · ' + ui.esc(t.categoria_especial) : ''
+          } · prioridad ${ui.esc(t.prioridad)}</span>
+        ${Number(t.confidencial) ? '<span style="color:var(--nivel-critico);font-weight:600">Reservado</span>' : ''}
         <span>Responsable: ${ui.esc(t.responsable_nombre || 'sin asignar')}</span>
         <span>Programada: ${ui.fecha(t.fecha_programada)}</span>
         ${t.fecha_limite ? `<span>Límite: ${ui.fecha(t.fecha_limite)}</span>` : ''}

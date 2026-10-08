@@ -161,6 +161,9 @@ input, select, textarea {
 }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--serie-1); outline-offset: 1px; }
 .campo { margin-bottom: 14px; }
+/* El atributo hidden lo pisa cualquier regla de autor que fije display, y
+   .fila fija grid: sin este refuerzo una fila escondida se sigue viendo. */
+[hidden] { display: none !important; }
 .fila { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); }
 
 button {

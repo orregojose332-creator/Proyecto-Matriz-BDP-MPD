@@ -96,7 +96,12 @@
       <div class="fila">
         <div class="campo"><label for="t-titulo">Título</label><input id="t-titulo" required maxlength="200"></div>
         <div class="campo"><label for="t-tipo">Tipo</label>
-          <select id="t-tipo"><option>Tarea</option><option>Control</option></select></div>
+          <select id="t-tipo">
+            <option value="Auditoria">Auditoría</option>
+            <option value="Control programado">Control programado</option>
+          </select>
+          <small style="font-size:11.5px;color:var(--ink-muted)">Los casos especiales
+            (hurto, acoso, denuncias) se abren desde el riesgo, no se agendan.</small></div>
         <div class="campo"><label for="t-prioridad">Prioridad</label>
           <select id="t-prioridad"><option>Baja</option><option selected>Media</option><option>Alta</option></select></div>
       </div>

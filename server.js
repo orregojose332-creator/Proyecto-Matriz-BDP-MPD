@@ -630,6 +630,12 @@ async function api(req, res, url) {
   // ---- Calendario: tareas y controles agendados ----------------------------
   const ESTADOS_TAREA = ['Pendiente','En proceso','En revision','Completada','Cancelada'];
 
+  /** Los tres tipos de trabajo del area. 'Auditoria' y 'Control programado' son
+   *  trabajo de rutina que se agenda; 'Especial' es un caso que aparece solo. */
+  const TIPOS_TAREA = ['Auditoria', 'Control programado', 'Especial'];
+  const CATEGORIAS_ESPECIAL = ['Hurto', 'Acoso', 'Canal de denuncias',
+                               'Conflicto de interes', 'Fraude interno', 'Otro'];
+
   const SELECT_TAREA = `
     SELECT t.*, u.nombre AS responsable_nombre, r.codigo AS riesgo_codigo,
            c.descripcion AS control_descripcion,
@@ -685,14 +691,36 @@ async function api(req, res, url) {
                        estados: ESTADOS_TAREA });
   }
 
+  /** Condicion que oculta los casos confidenciales a quien no debe verlos.
+   *  Un caso de hurto o acoso no es trabajo de rutina: sale de la lista salvo
+   *  para el cargo con el permiso, la persona responsable (sin verlo no podria
+   *  trabajarlo) y quien lo registro, que ya conoce lo que escribio. */
+  const VE_CASO = '(t.confidencial = 0 OR t.responsable_id = ? OR t.creado_por = ?)';
+
+  function filtroConfidencial(s, args) {
+    if (s.permisos.includes('tareas.confidencial')) return null;
+    args.push(s.id, s.id);
+    return VE_CASO;
+  }
+
+  /** La misma regla, aplicada a una tarea ya leida de la base. */
+  const veCaso = (s, t) =>
+    !t.confidencial || s.permisos.includes('tareas.confidencial')
+    || Number(t.responsable_id) === Number(s.id)
+    || Number(t.creado_por) === Number(s.id);
+
   if (rec[0] === 'tareas' && rec.length === 1 && metodo === 'GET') {
     const s = await exigir(req, res, 'tareas.ver'); if (!s) return;
     const cond = [], args = [];
+    const velo = filtroConfidencial(s, args);
+    if (velo) cond.push(velo);
     if (q.get('desde')) { cond.push('t.fecha_programada >= ?'); args.push(q.get('desde')); }
     if (q.get('hasta')) { cond.push('t.fecha_programada <= ?'); args.push(q.get('hasta')); }
     if (q.get('estado')) { cond.push('t.estado = ?'); args.push(q.get('estado')); }
     if (q.get('responsable')) { cond.push('t.responsable_id = ?'); args.push(q.get('responsable')); }
     if (q.get('tipo')) { cond.push('t.tipo = ?'); args.push(q.get('tipo')); }
+    // Historial de un riesgo: todas sus tareas, en cualquier estado.
+    if (q.get('riesgo')) { cond.push('t.riesgo_id = ?'); args.push(q.get('riesgo')); }
     const where = cond.length ? ` WHERE ${cond.join(' AND ')}` : '';
     const [filas] = await DB.query(
       `${SELECT_TAREA}${where} ORDER BY t.fecha_programada, t.prioridad DESC, t.id`, args);
@@ -703,6 +731,9 @@ async function api(req, res, url) {
     const s = await exigir(req, res, 'tareas.ver'); if (!s) return;
     const [[t]] = await DB.query(`${SELECT_TAREA} WHERE t.id = ?`, [rec[1]]);
     if (!t) return err(res, 'Tarea no encontrada', 404);
+    // Ocultarla de la lista no alcanza: tambien hay que negar el acceso directo
+    // por id, o bastaria con adivinar el numero para leer el caso.
+    if (!veCaso(s, t)) return err(res, 'Este caso es confidencial', 403);
     const [traspasos] = await DB.query(
       `SELECT tt.*, ud.nombre AS responsable_desde, uh.nombre AS responsable_hasta,
               uq.nombre AS usuario_nombre
@@ -722,15 +753,25 @@ async function api(req, res, url) {
     if (b.fecha_limite && b.fecha_limite < b.fecha_programada)
       return err(res, 'La fecha limite no puede ser anterior a la programada', 400);
 
+    const tipo = TIPOS_TAREA.includes(b.tipo) ? b.tipo : 'Auditoria';
+    const esEspecial = tipo === 'Especial';
+    if (esEspecial && !CATEGORIAS_ESPECIAL.includes(b.categoria_especial))
+      return err(res, 'Un caso Especial necesita indicar de que se trata', 400);
+    // Las Especiales nacen confidenciales. Se puede desmarcar a proposito, pero
+    // el que se olvida de marcarla no expone un caso de acoso o de denuncia.
+    const confidencial = b.confidencial === undefined ? esEspecial : Boolean(b.confidencial);
+
     const cx = await DB.getConnection();
     try {
       await cx.beginTransaction();
       const [r] = await cx.query(
-        `INSERT INTO tareas (codigo, titulo, descripcion, tipo, riesgo_id, control_id,
+        `INSERT INTO tareas (codigo, titulo, descripcion, tipo, categoria_especial,
+            confidencial, riesgo_id, control_id,
             fecha_programada, fecha_limite, prioridad, estado, responsable_id, creado_por)
-         VALUES (?,?,?,?,?,?,?,?,?,'Pendiente',?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,'Pendiente',?,?)`,
         [b.codigo || `T-${Date.now().toString().slice(-8)}`, b.titulo, b.descripcion || null,
-         b.tipo === 'Control' ? 'Control' : 'Tarea', b.riesgo_id || null, b.control_id || null,
+         tipo, esEspecial ? b.categoria_especial : null, confidencial ? 1 : 0,
+         b.riesgo_id || null, b.control_id || null,
          b.fecha_programada, b.fecha_limite || null, b.prioridad || 'Media',
          b.responsable_id || null, s.id]);
       // Primer traspaso: deja el punto de partida del que se miden las fases.
@@ -756,11 +797,32 @@ async function api(req, res, url) {
     const b = await body(req);
     if (b.fecha_limite && b.fecha_limite < b.fecha_programada)
       return err(res, 'La fecha limite no puede ser anterior a la programada', 400);
+
+    const [[previa]] = await DB.query(
+      `SELECT tipo, categoria_especial, confidencial, responsable_id, creado_por
+         FROM tareas WHERE id=?`, [rec[1]]);
+    if (!previa) return err(res, 'Tarea no encontrada', 404);
+    // Editar un caso confidencial es leerlo primero: la misma regla que para verlo.
+    if (!veCaso(s, previa)) return err(res, 'Este caso es confidencial', 403);
+
+    const tipo = TIPOS_TAREA.includes(b.tipo) ? b.tipo : previa.tipo;
+    const esEspecial = tipo === 'Especial';
+    // Una edicion que no manda la categoria no la esta cambiando: se conserva
+    // la que tenia, y solo se exige elegir una cuando todavia no hay ninguna.
+    const categoria = b.categoria_especial === undefined
+      ? previa.categoria_especial : b.categoria_especial;
+    if (esEspecial && !CATEGORIAS_ESPECIAL.includes(categoria))
+      return err(res, 'Un caso Especial necesita indicar de que se trata', 400);
+    // Quitar la confidencialidad es una decision explicita, no un descuido del formulario.
+    const confidencial = b.confidencial === undefined
+      ? Boolean(previa.confidencial) : Boolean(b.confidencial);
+
     const [r] = await DB.query(
-      `UPDATE tareas SET titulo=?, descripcion=?, tipo=?, riesgo_id=?, control_id=?,
+      `UPDATE tareas SET titulo=?, descripcion=?, tipo=?, categoria_especial=?,
+              confidencial=?, riesgo_id=?, control_id=?,
               fecha_programada=?, fecha_limite=?, prioridad=? WHERE id=?`,
-      [b.titulo, b.descripcion || null, b.tipo === 'Control' ? 'Control' : 'Tarea',
-       b.riesgo_id || null, b.control_id || null, b.fecha_programada,
+      [b.titulo, b.descripcion || null, tipo, esEspecial ? categoria : null,
+       confidencial ? 1 : 0, b.riesgo_id || null, b.control_id || null, b.fecha_programada,
        b.fecha_limite || null, b.prioridad || 'Media', rec[1]]);
     if (!r.affectedRows) return err(res, 'Tarea no encontrada', 404);
     await auditar('tarea_editada', { entidad: 'tarea', entidadId: Number(rec[1]), s, req });
@@ -773,8 +835,11 @@ async function api(req, res, url) {
     const s = await exigir(req, res, 'tareas.avanzar'); if (!s) return;
     const b = await body(req);
     const [[t]] = await DB.query(
-      'SELECT estado, responsable_id, created_at, iniciada_en FROM tareas WHERE id=?', [rec[1]]);
+      `SELECT estado, responsable_id, created_at, iniciada_en, confidencial, creado_por
+         FROM tareas WHERE id=?`, [rec[1]]);
     if (!t) return err(res, 'Tarea no encontrada', 404);
+    // No se puede mover un caso que no se puede leer.
+    if (!veCaso(s, t)) return err(res, 'Este caso es confidencial', 403);
 
     const estadoNuevo = b.estado || t.estado;
     const respNuevo = b.responsable_id === undefined
@@ -821,6 +886,9 @@ async function api(req, res, url) {
 
   if (rec[0] === 'tareas' && rec.length === 2 && metodo === 'DELETE') {
     const s = await exigir(req, res, 'tareas.eliminar'); if (!s) return;
+    const [[previa]] = await DB.query(
+      'SELECT confidencial, responsable_id, creado_por FROM tareas WHERE id=?', [rec[1]]);
+    if (previa && !veCaso(s, previa)) return err(res, 'Este caso es confidencial', 403);
     await DB.query('DELETE FROM tareas WHERE id=?', [rec[1]]);
     await auditar('tarea_eliminada', { entidad: 'tarea', entidadId: Number(rec[1]), s, req });
     emitir('tareas', { accion: 'baja', id: Number(rec[1]) });

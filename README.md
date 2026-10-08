@@ -18,7 +18,11 @@ SEPRELAD en Paraguay.
   de los demás sin refrescar.
 - **Riesgos**: cada riesgo en una ficha legible, con un botón **+ info** que
   explica el tipo de riesgo, sus casos típicos y la situación concreta en la
-  entidad, y un botón **+ Tarea** que agenda trabajo sobre ese riesgo.
+  entidad, un **Historial** con sus tareas agrupadas por estado, y un botón
+  **+ Tarea** para abrir trabajo nuevo sobre ese riesgo.
+- **Tres tipos de trabajo**: auditoría, control programado y **caso especial**
+  (hurto, acoso, canal de denuncias), estos últimos reservados por defecto a los
+  cargos autorizados.
 - **Tareas**: todo lo agendado agrupado por estado, con el historial de fases.
 - **Calendario** de tareas y controles agendados, con medición de cuánto tarda
   cada fase del trabajo y cuántas manos pasa.
@@ -85,8 +89,11 @@ confirmación escribiendo `BORRAR`. Para conservar lo cargado y solo incorporar
 lo nuevo, aplique únicamente las migraciones:
 
 ```bash
-mysql -u root matriz_mdp < db/migracion-01-calendario.sql
+for f in db/migracion-*.sql; do mysql -u root matriz_mdp < "$f"; done
 ```
+
+Se aplican en orden y se pueden volver a correr sin romper nada: usan
+`IF NOT EXISTS` e `INSERT IGNORE`.
 
 ### Para que entren desde otras computadoras
 
@@ -195,9 +202,40 @@ según su nivel residual, las cifras del cálculo y tres acciones.
 
 - **+ info** despliega cuatro cosas: qué significa ese tipo de riesgo, sus casos
   típicos, la situación concreta en la entidad y cómo se llegó al número.
+- **Historial** lista las tareas de ese riesgo agrupadas en **sin iniciar, en
+  proceso, completadas y canceladas**, con el total arriba. Exige `tareas.ver`.
 - **Editar** abre el formulario, y solo aparece con el permiso `riesgos.editar`.
-- **+ Tarea** agenda trabajo sobre ese riesgo, con el título, el responsable y
-  la prioridad ya propuestos a partir del riesgo; exige `tareas.crear`.
+- **+ Tarea** crea trabajo sobre ese riesgo —solo lo crea; lo ya creado se
+  consulta en Historial—, con el título, el responsable y la prioridad ya
+  propuestos a partir del riesgo; exige `tareas.crear`.
+
+Los dos paneles son independientes: se pueden tener abiertos a la vez, y el
+Historial se vuelve a pedir solo cuando una tarea cambia de estado, así que una
+tarea salta de grupo sin tocar el botón.
+
+### Los tres tipos de tarea
+
+| Tipo | Qué es |
+|---|---|
+| **Auditoría** | revisión planificada sobre un proceso o un área |
+| **Control programado** | verificación periódica de un control de la matriz |
+| **Especial** | caso puntual: hurto, acoso, canal de denuncias, conflicto de interés, fraude interno |
+
+Los dos primeros son trabajo de rutina y se agendan también desde el
+**Calendario**. Las **Especiales** no: nacen de un hecho concreto, piden indicar
+de qué se trata y se abren desde el riesgo.
+
+Una Especial **nace reservada**. Eso quiere decir que no aparece en la lista de
+tareas, ni se puede abrir por su id, ni mover de estado, salvo para:
+
+- los cargos con el permiso `tareas.confidencial` (Administrador y Supervisor),
+- la persona responsable asignada, que sin verlo no podría trabajarlo,
+- y quien registró el caso, que ya conoce lo que escribió.
+
+La marca se puede quitar a propósito desde el formulario, pero el que se olvida
+de marcarla no expone una denuncia: el valor por defecto protege. La restricción
+se verifica en el servidor en cada pedido —listar, abrir, editar, avanzar y
+borrar—, no escondiendo el botón.
 
 La orientación y los casos típicos viven en el **subfactor**, no en el riesgo,
 porque describen la categoría y sirven para todos los riesgos que caen en ella.
@@ -209,8 +247,10 @@ contexto, que se completa con **Editar**.
 Muestra los mismos riesgos en otro formato: si en el uso resulta redundante,
 conviene fusionarlas en una sola pantalla.
 
-**Tareas** agrupa lo agendado por estado, con buscador, filtro de vencidas y el
-historial de fases de cada una. Para verlo por fecha está **Calendario**.
+**Tareas** agrupa todo lo abierto por estado, con buscador, filtro por tipo,
+filtro de vencidas y el historial de fases de cada una. Es la vista de todas las
+tareas; el Historial de la ficha es el recorte de un riesgo. Para verlo por fecha
+está **Calendario**.
 
 ## Calendario y medición de fases
 
@@ -311,6 +351,9 @@ protege de un disco que falla.
 - `JWT_SECRET` fuera del código, en `.env`, que no se versiona.
 - Un administrador no puede degradarse a sí mismo ni quitarle a su propio cargo
   el permiso de gestionar cargos: evita dejar el sistema sin quien lo administre.
+- **Los casos reservados** (hurto, acoso, canal de denuncias) quedan fuera del
+  listado y también del acceso directo por id: no alcanza con esconderlos de la
+  lista si adivinando el número se pueden leer.
 
 ## Estructura
 
@@ -323,10 +366,26 @@ scripts/crear-admin.js   alta del primer administrador
 public/              pantallas (HTML + JS sin framework)
   app.css            tokens de color, claro y oscuro
   app.js             sesión, permisos, cliente SSE, barra lateral y utilidades
-  Login · Reportes · Matriz · Calendario · Usuarios · Cargos · Auditoria
+  Login · Reportes · Riesgos · Tareas · Matriz · Calendario · Usuarios · Cargos · Auditoria
 db/migracion-*.sql   cambios de esquema posteriores, aplicados en orden por init-db
 pruebas/             pruebas de API y de actualización en vivo
 ```
+
+### Pruebas
+
+Con el servidor levantado (`npm start`) y en otra terminal:
+
+```bash
+node pruebas/prueba-riesgos.js       # fichas, "+ info", edición por cargo
+node pruebas/prueba-historial.js     # Historial, los tres tipos y lo reservado
+node pruebas/prueba-calendario.js    # agenda, fases y métricas de tiempo
+node pruebas/prueba-ui-historial.js  # en navegador: paneles y formulario
+node pruebas/dos-usuarios.js         # dos navegadores: actualización en vivo
+node pruebas/corte.js                # reconexión después de reiniciar el servidor
+```
+
+Las tres últimas necesitan Playwright (`npm i -D playwright`). Se limpian
+solas: el riesgo y las tareas que crean se borran al terminar.
 
 ## Pendiente de definir con el oficial de cumplimiento
 

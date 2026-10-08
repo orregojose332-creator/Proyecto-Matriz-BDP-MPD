@@ -1,4 +1,4 @@
-const { chromium } = require('./node_modules/playwright');
+const { chromium } = require('playwright');
 const BASE = 'http://localhost:3100';
 
 const entrar = async (nav, usuario, clave, pagina) => {

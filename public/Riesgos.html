@@ -48,6 +48,31 @@
 .info ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.7; color: var(--ink-2); }
 .info .caja { background: var(--plane); border-radius: 8px; padding: 12px 14px; }
 .sin-dato { color: var(--ink-muted); font-style: italic; font-size: 13px; }
+/* Historial: cuatro grupos de tareas del riesgo, cada uno con su contador.
+   El color de la cabecera es el del estado, no decoracion. */
+.hist-resumen { display: grid; gap: 10px; margin-top: 2px;
+  grid-template-columns: repeat(auto-fit, minmax(min(112px, 100%), 1fr)); }
+.hist-grupo { margin-top: 14px; }
+.hist-grupo > h5 { margin: 0 0 6px; font-size: 12.5px; font-weight: 600;
+  display: flex; gap: 8px; align-items: baseline; }
+.hist-grupo > h5::before { content: ''; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--axis); flex: none; }
+.hist-grupo[data-g="sin-iniciar"] > h5::before { background: var(--ink-muted); }
+.hist-grupo[data-g="en-proceso"]  > h5::before { background: var(--serie-1); }
+.hist-grupo[data-g="completada"]  > h5::before { background: var(--nivel-bajo); }
+.hist-grupo[data-g="cancelada"]   > h5::before { background: var(--axis); }
+.hist-grupo > h5 .cuenta { color: var(--ink-muted); font-weight: 500; }
+.hist-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.hist-item { background: var(--plane); border-radius: 8px; padding: 9px 12px; min-width: 0; }
+.hist-fila { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.hist-titulo { font-size: 13.5px; font-weight: 600; flex: 1; min-width: 150px; }
+.hist-meta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px;
+  font-size: 11.5px; color: var(--ink-muted); }
+.hist-meta .vencida { color: var(--nivel-critico); font-weight: 600; }
+.etiqueta { font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px;
+  color: var(--ink-2); background: var(--surface-1); border: 1px solid var(--grid);
+  border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.etiqueta.reservado { color: var(--nivel-critico); border-color: var(--nivel-critico); }
 .filtros { display: grid; gap: 12px;
            grid-template-columns: repeat(auto-fit, minmax(min(170px,100%), 1fr)); }
 </style>
@@ -111,7 +136,11 @@
       <div class="fila">
         <div class="campo"><label for="t-titulo">Título</label><input id="t-titulo" required maxlength="200"></div>
         <div class="campo"><label for="t-tipo">Tipo</label>
-          <select id="t-tipo"><option>Control</option><option>Tarea</option></select></div>
+          <select id="t-tipo">
+            <option value="Auditoria">Auditoría</option>
+            <option value="Control programado">Control programado</option>
+            <option value="Especial">Especial (hurto, acoso, denuncia…)</option>
+          </select></div>
         <div class="campo"><label for="t-prioridad">Prioridad</label>
           <select id="t-prioridad"><option>Baja</option><option selected>Media</option><option>Alta</option></select></div>
       </div>
@@ -119,6 +148,21 @@
         <div class="campo"><label for="t-fecha">Fecha programada</label><input id="t-fecha" type="date" required></div>
         <div class="campo"><label for="t-limite">Fecha límite</label><input id="t-limite" type="date"></div>
         <div class="campo"><label for="t-resp">Responsable</label><select id="t-resp"><option value="">—</option></select></div>
+      </div>
+      <!-- Solo para las Especiales: de que caso se trata. Se muestra al elegir
+           el tipo, porque en una auditoría de rutina no significa nada. -->
+      <div class="fila" id="fila-especial" hidden>
+        <div class="campo"><label for="t-categoria">De qué se trata el caso</label>
+          <select id="t-categoria">
+            <option>Hurto</option><option>Acoso</option>
+            <option>Canal de denuncias</option><option>Conflicto de interes</option>
+            <option>Fraude interno</option><option>Otro</option>
+          </select></div>
+        <div class="campo"><label for="t-confidencial">Visibilidad</label>
+          <label style="display:flex;gap:8px;align-items:center;padding-top:7px;font-weight:400">
+            <input type="checkbox" id="t-confidencial" checked style="width:auto;margin:0">
+            Reservado: solo el responsable y los cargos autorizados
+          </label></div>
       </div>
       <div class="campo"><label for="t-desc">Descripción</label>
         <textarea id="t-desc" rows="2" maxlength="1000"></textarea></div>
@@ -141,6 +185,8 @@
   const { ui, api, puede } = MDP;
 
   let cat = null, lista = [], abiertos = new Set(), detalles = {};
+  // Los paneles de historial abiertos y las tareas que ya trajimos de cada uno.
+  const historiales = new Set(), historial = {};
 
   cat = await api('/catalogos');
   const opcs = (arr, v = 'id', t = 'nombre') =>
@@ -171,6 +217,7 @@
   // ─── Ficha de cada riesgo ────────────────────────────────────────────────
   function ficha(r) {
     const abierta = abiertos.has(r.id);
+    const enHistorial = historiales.has(r.id);
     const d = detalles[r.id];
     return `
     <article class="ficha" data-n="${ui.esc(r.residual_nivel)}" data-id="${r.id}">
@@ -188,8 +235,14 @@
         </div>
       </div>
       ${abierta ? `<div class="info">${d ? panelInfo(d) : '<p class="sin-dato">Cargando…</p>'}</div>` : ''}
+      ${enHistorial ? `<div class="info">${
+        historial[r.id] ? panelHistorial(r, historial[r.id]) : '<p class="sin-dato">Cargando…</p>'
+      }</div>` : ''}
       <div class="pie">
         <button class="accion" data-info="${r.id}">${abierta ? '− Menos' : '+ Info'}</button>
+        ${puede('tareas.ver') ? `<button class="accion" data-historial="${r.id}">
+          ${enHistorial ? '− Historial' : 'Historial'}${
+            Number(r.tareas_count) ? ` (${r.tareas_count})` : ''}</button>` : ''}
         ${puede('riesgos.editar') ? `<button class="accion" data-editar="${r.id}">Editar</button>` : ''}
         ${puede('tareas.crear')   ? `<button class="accion primario" data-tarea="${r.id}">+ Tarea</button>` : ''}
         ${puede('riesgos.aprobar') && r.estado !== 'Aprobado'
@@ -258,9 +311,72 @@
            efectividad ${c.efectividad}/5${c.documentado ? ', documentado' : ''}</li>`).join('')}</ul>`
         : '<p class="sin-dato">Ninguno. El riesgo está sin mitigar.</p>'}
 
-      ${d.tareas_count ? `<h4>Tareas</h4>
-        <p>${d.tareas_count} tarea(s) asociadas, ${d.tareas_abiertas} sin cerrar.
-           Se ven en el módulo <a href="Tareas.html">Tareas</a>.</p>` : ''}`;
+      <p style="margin-top:12px;font-size:12.5px;color:var(--ink-muted)">
+        Las tareas de este riesgo están en «Historial».</p>`;
+  }
+
+  /** Los cuatro grupos que pidió el área. El total son «las tareas creadas»:
+   *  no es un grupo aparte, es la suma, y por eso va arriba como resumen. */
+  const GRUPOS = [
+    { g: 'sin-iniciar', titulo: 'Sin iniciar', estados: ['Pendiente'] },
+    { g: 'en-proceso',  titulo: 'En proceso',  estados: ['En proceso', 'En revision'] },
+    { g: 'completada',  titulo: 'Completadas', estados: ['Completada'] },
+    { g: 'cancelada',   titulo: 'Canceladas',  estados: ['Cancelada'] },
+  ];
+
+  const HOY = () => new Date().toISOString().slice(0, 10);
+
+  function lineaTarea(t) {
+    const cerrada = t.estado === 'Completada' || t.estado === 'Cancelada';
+    const vencida = !cerrada && t.fecha_limite && t.fecha_limite.slice(0, 10) < HOY();
+    return `<li class="hist-item">
+      <div class="hist-fila">
+        <span class="codigo">${ui.esc(t.codigo)}</span>
+        <span class="hist-titulo">${ui.esc(t.titulo)}</span>
+        <span class="etiqueta">${ui.esc(t.tipo)}${
+          t.categoria_especial ? ' · ' + ui.esc(t.categoria_especial) : ''}</span>
+        ${Number(t.confidencial) ? '<span class="etiqueta reservado">Reservado</span>' : ''}
+      </div>
+      <div class="hist-meta">
+        <span>${ui.esc(t.responsable_nombre || 'sin responsable')}</span>
+        <span>Programada ${ui.fecha(t.fecha_programada)}</span>
+        ${t.fecha_limite ? `<span class="${vencida ? 'vencida' : ''}">Límite ${
+          ui.fecha(t.fecha_limite)}${vencida ? ' · vencida' : ''}</span>` : ''}
+        ${t.completada_en ? `<span>Cerrada ${ui.fecha(t.completada_en)}</span>` : ''}
+        <span>Prioridad ${ui.esc(t.prioridad)}</span>
+        ${Number(t.traspasos) ? `<span>${t.traspasos} traspaso(s)</span>` : ''}
+      </div></li>`;
+  }
+
+  function panelHistorial(r, tareas) {
+    if (!tareas.length) return `
+      <h4>Historial de tareas</h4>
+      <p class="sin-dato">Todavía no hay ninguna tarea sobre ${ui.esc(r.codigo)}.
+         Se crean con «+ Tarea».</p>`;
+
+    const cuenta = est => tareas.filter(t => est.includes(t.estado)).length;
+    const cifra = (et, v) => `<div class="cifra"><div class="et">${et}</div>
+      <div class="v">${v}</div></div>`;
+
+    // Lo que el servidor oculta no se puede contar acá: si falta algo, es porque
+    // el cargo no lo puede ver, y el aviso evita que se lea como "no hay nada".
+    const faltan = Number(r.tareas_count) - tareas.length;
+
+    return `
+      <h4>Historial de tareas</h4>
+      <div class="hist-resumen">
+        ${cifra('Creadas', tareas.length)}
+        ${GRUPOS.map(x => cifra(x.titulo, cuenta(x.estados))).join('')}
+      </div>
+      ${faltan > 0 ? `<p class="sin-dato" style="margin-top:10px">${faltan} caso(s)
+        reservado(s) no se muestran con su cargo.</p>` : ''}
+      ${GRUPOS.map(x => {
+        const del = tareas.filter(t => x.estados.includes(t.estado));
+        if (!del.length) return '';
+        return `<div class="hist-grupo" data-g="${x.g}">
+          <h5>${x.titulo} <span class="cuenta">(${del.length})</span></h5>
+          <ul class="hist-lista">${del.map(lineaTarea).join('')}</ul></div>`;
+      }).join('')}`;
   }
 
   function pintar() {
@@ -272,13 +388,23 @@
 
   // ─── Acciones ────────────────────────────────────────────────────────────
   document.getElementById('fichas').addEventListener('click', async e => {
-    const b = e.target.closest('button[data-info],button[data-editar],button[data-tarea],button[data-aprobar]');
+    const b = e.target.closest('button[data-info],button[data-historial],button[data-editar],button[data-tarea],button[data-aprobar]');
     if (!b) return;
-    const id = Number(b.dataset.info || b.dataset.editar || b.dataset.tarea || b.dataset.aprobar);
+    const id = Number(b.dataset.info || b.dataset.historial || b.dataset.editar
+                      || b.dataset.tarea || b.dataset.aprobar);
     try {
       if (b.dataset.info) {
         if (abiertos.has(id)) abiertos.delete(id);
         else { abiertos.add(id); if (!detalles[id]) { pintar(); detalles[id] = await api(`/riesgos/${id}`); } }
+        return pintar();
+      }
+      if (b.dataset.historial) {
+        if (historiales.has(id)) historiales.delete(id);
+        else {
+          historiales.add(id);
+          // Pintar primero deja el panel con el «Cargando…» mientras va el pedido.
+          if (!historial[id]) { pintar(); historial[id] = await traerHistorial(id); }
+        }
         return pintar();
       }
       if (b.dataset.editar)  return editar(id);
@@ -351,9 +477,22 @@
   const cajaT = document.getElementById('caja-tarea');
   document.getElementById('btn-cancelar-tarea').onclick = () => { cajaT.hidden = true; };
 
+  const tipoT  = document.getElementById('t-tipo');
+  const filaEsp = document.getElementById('fila-especial');
+  /** El campo de categoría solo aparece en las Especiales, y solo es obligatorio
+   *  ahí: el required se pone y se quita con el tipo, no queda fijo. */
+  function sincronizarTipo() {
+    const esp = tipoT.value === 'Especial';
+    filaEsp.hidden = !esp;
+    document.getElementById('t-categoria').required = esp;
+    if (esp) document.getElementById('t-confidencial').checked = true;
+  }
+  tipoT.onchange = sincronizarTipo;
+
   function nuevaTarea(idRiesgo) {
     const r = lista.find(x => x.id === idRiesgo);
     document.getElementById('form-tarea').reset();
+    sincronizarTipo();
     document.getElementById('t-riesgo').value = idRiesgo;
     // Arranca con un título propuesto: casi siempre se trata de verificar o
     // reforzar el control del riesgo que se está mirando.
@@ -372,20 +511,30 @@
 
   document.getElementById('form-tarea').addEventListener('submit', async e => {
     e.preventDefault();
+    const esp = tipoT.value === 'Especial';
+    const idRiesgo = Number(document.getElementById('t-riesgo').value);
     try {
       await api('/tareas', { method: 'POST', cuerpo: {
         titulo:      document.getElementById('t-titulo').value.trim(),
         descripcion: document.getElementById('t-desc').value.trim() || null,
-        tipo:        document.getElementById('t-tipo').value,
+        tipo:        tipoT.value,
+        categoria_especial: esp ? document.getElementById('t-categoria').value : null,
+        confidencial: esp ? document.getElementById('t-confidencial').checked : false,
         prioridad:   document.getElementById('t-prioridad').value,
-        riesgo_id:   Number(document.getElementById('t-riesgo').value),
+        riesgo_id:   idRiesgo,
         fecha_programada: document.getElementById('t-fecha').value,
         fecha_limite:     document.getElementById('t-limite').value || null,
         responsable_id:   document.getElementById('t-resp').value || null } });
       cajaT.hidden = true;
-      ui.aviso('Tarea agendada y vinculada al riesgo', 'ok');
+      // La tarea recién creada se ve en el acto: se abre el historial del riesgo.
+      if (puede('tareas.ver')) historiales.add(idRiesgo);
+      ui.aviso(esp ? 'Caso especial registrado' : 'Tarea creada y vinculada al riesgo', 'ok');
     } catch (err) { ui.aviso(err.message); }
   });
+
+  /** Todas las tareas del riesgo, en cualquier estado. El servidor ya quita
+   *  las que el cargo no puede ver, así que acá no hay nada que filtrar. */
+  const traerHistorial = id => api(`/tareas?riesgo=${id}`);
 
   // ─── Carga ───────────────────────────────────────────────────────────────
   let filtroTexto = '';
@@ -403,6 +552,12 @@
       }
       for (const id of [...abiertos]) if (!lista.some(r => r.id === id)) abiertos.delete(id);
       for (const id of abiertos) detalles[id] = await api(`/riesgos/${id}`);
+      // Los historiales abiertos se vuelven a traer: una tarea que acaba de
+      // cambiar de estado tiene que saltar de grupo sin tocar el botón.
+      for (const id of [...historiales]) {
+        if (!lista.some(r => r.id === id)) { historiales.delete(id); delete historial[id]; }
+        else historial[id] = await traerHistorial(id);
+      }
       pintar();
     } catch (e) { ui.aviso(e.message); }
   }

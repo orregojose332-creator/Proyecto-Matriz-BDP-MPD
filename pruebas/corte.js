@@ -1,4 +1,4 @@
-const { chromium } = require('./node_modules/playwright');
+const { chromium } = require('playwright');
 const { execSync, spawn } = require('child_process');
 const BASE = 'http://localhost:3100';
 const esperar = ms => new Promise(r => setTimeout(r, ms));
