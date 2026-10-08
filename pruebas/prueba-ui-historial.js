@@ -1,11 +1,12 @@
-/* Prueba en navegador del Historial y del formulario de "+ Tarea".
+/* Prueba en navegador del Historial y de la pantalla de carga de tareas.
  *
  * Lo que se verifica a ojo de usuario: que el boton Historial abra el panel
- * con los grupos, que el campo de categoria aparezca solo al elegir Especial,
- * que crear una tarea desde el riesgo la deje visible en el acto, y que el
- * panel entre sin desbordar la pantalla de un telefono.
+ * con los grupos, que "+ Tarea" lleve a la pantalla del informe, que ahi se
+ * pueda cargar una tarea con sus hallazgos, que al guardar vuelva al riesgo y
+ * la tarea aparezca en el historial, y que el panel entre sin desbordar un
+ * telefono.
  *
- *   node pruebas/prueba-ui-historial.js
+ *   node pruebas/prueba-ui-historial.js      (con el servidor en el 3100)
  */
 const { chromium } = require('playwright');
 const BASE = 'http://localhost:3100';
@@ -30,75 +31,89 @@ const entrar = async (nav, usuario, clave, ancho = 1280) => {
 
   console.log('\n--- EL BOTON HISTORIAL ---');
   const ficha = p.locator('.ficha').first();
-  const codigo = await ficha.locator('.codigo').first().textContent();
+  const codigo = (await ficha.locator('.codigo').first().textContent()).trim();
   ok(await ficha.locator('button[data-historial]').count() === 1,
-     `la ficha de ${codigo.trim()} tiene boton Historial`);
+     `la ficha de ${codigo} tiene boton Historial`);
   ok(await ficha.locator('button[data-info]').count() === 1, 'y sigue teniendo "+ Info"');
 
   await ficha.locator('button[data-historial]').click();
   await p.waitForSelector('.ficha .hist-resumen, .ficha .sin-dato', { timeout: 10000 });
-  const abierto = await ficha.locator('.hist-resumen, .sin-dato').count();
-  ok(abierto > 0, 'al tocarlo se abre el panel');
-  ok((await ficha.locator('button[data-historial]').textContent()).includes('Historial'),
-     'el boton pasa a decir "− Historial"');
+  ok(await ficha.locator('.hist-resumen, .sin-dato').count() > 0, 'al tocarlo se abre el panel');
 
   // "+ Info" y "Historial" son paneles distintos: abrir uno no cierra el otro.
   await ficha.locator('button[data-info]').click();
   await p.waitForSelector('.ficha .cifras', { timeout: 10000 });
   ok(await ficha.locator('.info').count() === 2, 'los dos paneles conviven abiertos');
 
-  console.log('\n--- EL FORMULARIO DE "+ TAREA" ---');
+  console.log('\n--- "+ TAREA" ABRE LA PANTALLA DEL INFORME ---');
   await ficha.locator('button[data-tarea]').click();
-  await p.waitForSelector('#caja-tarea:not([hidden])');
-  const tipos = await p.locator('#t-tipo option').allTextContents();
-  ok(tipos.length === 3 && tipos.some(t => t.includes('Auditoría'))
-     && tipos.some(t => t.includes('Control programado')) && tipos.some(t => t.includes('Especial')),
-     `los tres tipos estan en el selector: ${tipos.join(' / ')}`);
-  ok(await p.locator('#fila-especial').isHidden(),
-     'con Auditoria no se pide la categoria del caso');
+  await p.waitForURL('**/Tarea.html?riesgo=*', { timeout: 10000 });
+  await p.waitForSelector('#f-titulo');
+  const idRiesgo = Number(new URL(p.url()).searchParams.get('riesgo'));
+  ok(p.url().includes('Tarea.html?riesgo='), '+ Tarea navega a la pantalla nueva');
+  ok((await p.inputValue('#f-titulo')).length > 0, 'el titulo viene precargado desde el riesgo');
 
-  await p.selectOption('#t-tipo', 'Especial');
-  ok(await p.locator('#fila-especial').isVisible(), 'al elegir Especial aparece la categoria');
-  ok(await p.locator('#t-confidencial').isChecked(), 'y queda marcada como reservada sola');
-  const cats = await p.locator('#t-categoria option').allTextContents();
-  ok(cats.includes('Hurto') && cats.includes('Acoso') && cats.includes('Canal de denuncias'),
-     `las categorias incluyen los casos que pidio el area: ${cats.join(' / ')}`);
+  const tipos = await p.locator('#f-tipo option').allTextContents();
+  ok(tipos.join('/') === 'Tarea programada/Control extraordinario',
+     `los dos tipos nuevos estan en el selector: ${tipos.join(' / ')}`);
 
-  await p.selectOption('#t-tipo', 'Auditoria');
-  ok(await p.locator('#fila-especial').isHidden(), 'al volver a Auditoria se esconde de nuevo');
+  // El informe: cabecera + un hallazgo con su cadena completa.
+  ok(await p.locator('.hallazgo').count() === 1, 'arranca con un hallazgo en blanco');
+  const titulo = 'Informe de prueba UI ' + Date.now().toString().slice(-6);
+  await p.fill('#f-titulo', titulo);
+  await p.selectOption('#f-tipo', 'Control extraordinario');
+  await p.fill('#f-area', 'Caja - Sucursal Centro');
+  await p.fill('#f-antec', 'Observacion previa de faltantes');
+  await p.fill('.hallazgo [data-h="hallazgo"]', 'Arqueos sin doble firma');
+  await p.fill('.hallazgo [data-h="riesgo"]', 'Faltantes no detectados a tiempo');
+  await p.fill('.hallazgo [data-h="recomendacion"]', 'Implementar doble firma diaria');
+  await p.fill('.hallazgo [data-h="plan_accion"]', 'Se instruye doble firma desde noviembre');
+  await p.fill('.hallazgo [data-h="area_responsable"]', 'Tesoreria');
 
-  console.log('\n--- CREAR Y VER SIN RECARGAR ---');
-  const titulo = 'Tarea de prueba UI ' + Date.now().toString().slice(-6);
-  await p.fill('#t-titulo', titulo);
-  await p.click('#form-tarea button.primario');
-  await p.waitForSelector('#aviso.ok', { timeout: 10000 });
-  ok((await p.locator('#aviso').textContent()).includes('creada'),
-     'avisa que la tarea se creo');
-  // El SSE recarga la lista y el historial del riesgo se vuelve a pedir solo.
-  await p.waitForFunction(t => document.body.innerText.includes(t), titulo, { timeout: 15000 });
-  ok(true, 'la tarea nueva aparece en el historial sin recargar la pagina');
-  const grupos = await p.locator('.hist-grupo h5').allTextContents();
-  ok(grupos.some(g => g.includes('Sin iniciar')),
-     `y cae en el grupo correcto: ${grupos.map(g => g.replace(/\s+/g, ' ').trim()).join(' | ')}`);
+  await p.click('#btn-hallazgo');
+  ok(await p.locator('.hallazgo').count() === 2, '"+ Agregar hallazgo" suma otra ficha');
+  await p.fill('.hallazgo:nth-child(2) [data-h="hallazgo"]', 'Camaras sin retencion de 90 dias');
+
+  console.log('\n--- GUARDAR Y VER EN EL HISTORIAL ---');
+  await p.click('#btn-guardar');
+  await p.waitForURL('**/Riesgos.html', { timeout: 10000 });
+  ok(true, 'al guardar vuelve a Riesgos');
+
+  const fr = p.locator(`.ficha[data-id="${idRiesgo}"]`);
+  await fr.locator('button[data-historial]').click();
+  await p.waitForSelector('.hist-item', { timeout: 10000 });
+  const item = fr.locator('.hist-item', { hasText: titulo });
+  ok(await item.count() === 1, 'la tarea aparece en el historial del riesgo');
+  // El conteo de hallazgos se muestra (text-transform lo pone en mayuscula).
+  ok(/2 HALLAZGO/i.test(await item.innerText()), 'muestra "2 hallazgo(s)"');
+  ok(/CONTROL EXTRAORDINARIO/i.test(await item.innerText()), 'y el tipo elegido');
+
+  console.log('\n--- ABRIR EL INFORME GUARDADO ---');
+  await item.locator('a.hist-titulo').click();
+  await p.waitForURL('**/Tarea.html?id=*', { timeout: 10000 });
+  await p.waitForSelector('.hallazgo');
+  ok(await p.locator('.hallazgo').count() === 2, 'la tarea abre con sus 2 hallazgos');
+  ok(await p.inputValue('#f-area') === 'Caja - Sucursal Centro', 'el area auditada se guardo');
+  ok(await p.locator('.hallazgo').first().locator('[data-h="area_responsable"]').inputValue() === 'Tesoreria',
+     'el area responsable del hallazgo se guardo');
+  const idTarea = Number(new URL(p.url()).searchParams.get('id'));
 
   console.log('\n--- EN UN TELEFONO (390px) ---');
   const chico = await entrar(nav, 'admin', 'ClaveDePrueba123', 390);
-  await chico.locator('.ficha').first().locator('button[data-historial]').click();
+  const fc = chico.locator('.ficha').first();
+  await fc.locator('button[data-historial]').click();
   await chico.waitForSelector('.ficha .hist-resumen, .ficha .sin-dato', { timeout: 10000 });
   const desborde = await chico.evaluate(() =>
     document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  ok(desborde <= 0, `el panel no desborda a lo ancho (sobra ${desborde}px)`);
+  ok(desborde <= 0, `el historial no desborda a lo ancho (sobra ${desborde}px)`);
 
-  // Limpieza: la tarea que creo la prueba no queda en el trabajo real. Se borra
-  // desde la propia pagina, que ya tiene la sesion abierta.
-  const borradas = await p.evaluate(async t => {
+  // Limpieza: la tarea de prueba no queda en el trabajo real.
+  const borrada = await p.evaluate(async id => {
     const cab = { Authorization: 'Bearer ' + localStorage.getItem('mdp_token') };
-    const todas = await (await fetch('/api/tareas', { headers: cab })).json();
-    const mias = todas.filter(x => x.titulo === t);
-    for (const x of mias) await fetch('/api/tareas/' + x.id, { method: 'DELETE', headers: cab });
-    return mias.length;
-  }, titulo);
-  ok(borradas === 1, `la tarea de prueba se borro al terminar (${borradas})`);
+    const r = await fetch('/api/tareas/' + id, { method: 'DELETE', headers: cab });
+    return r.ok;
+  }, idTarea);
+  ok(borrada, 'la tarea de prueba se borro al terminar');
 
   await nav.close();
   console.log(`\n========================================`);

@@ -53,6 +53,8 @@
     </form>
   </div>
 
+  <div class="tarjeta" id="caja-controles" hidden style="margin-bottom:16px"></div>
+
   <div class="tarjeta"><div id="tabla"></div></div>
 </main>
 
@@ -110,7 +112,7 @@
         <thead><tr>
           <th>Código</th><th>Factor / subfactor</th><th>Descripción</th>
           <th class="num">P</th><th class="num">I</th>
-          <th class="num">Inher.</th><th class="num">Resid.</th><th>Nivel</th>
+          <th>Nivel</th>
           <th class="num">Ctrl.</th><th>Estado</th><th>Responsable</th><th></th>
         </tr></thead>
         <tbody>${lista.map(r => `
@@ -121,8 +123,6 @@
             <td>${ui.esc(r.descripcion)}</td>
             <td class="num">${r.probabilidad}</td>
             <td class="num">${r.impacto}</td>
-            <td class="num">${ui.num(r.inherente_valor, 1)}</td>
-            <td class="num"><strong>${ui.num(r.residual_valor, 1)}</strong></td>
             <td>${ui.nivel(r.residual_nivel)}</td>
             <td class="num">${r.controles_count}</td>
             <td class="estado">${ui.esc(r.estado)}</td>
@@ -134,48 +134,55 @@
                  ? `<button data-accion="aprobar" data-id="${r.id}">Aprobar</button>` : ''}
               ${puede('riesgos.eliminar') ? `<button class="peligro" data-accion="borrar" data-id="${r.id}">Borrar</button>` : ''}
             </td>
-          </tr>
-          <tr data-detalle="${r.id}" hidden><td colspan="12" style="background:var(--plane)"></td></tr>`).join('')}
+          </tr>`).join('')}
         </tbody>
       </table></div>`;
-    if (expandido) abrirControles(expandido, true);
+    if (expandido) abrirControles(expandido, true);   // refresca el panel abierto
   }
 
   // ─── Panel de controles ──────────────────────────────────────────────────
+  // Vive en su propia tarjeta, FUERA de la tabla. Antes se abría como una fila
+  // dentro de la tabla, pero al hacer clic en los botones (que están en la
+  // columna de la derecha) el navegador desplazaba la tabla en horizontal para
+  // traerlos a la vista, y eso dejaba el panel —y su primera columna— tapados
+  // bajo la barra lateral: parecía que el botón "no hacía nada".
+  const cajaControles = document.getElementById('caja-controles');
+
   async function abrirControles(id, mantener = false) {
-    const fila = document.querySelector(`tr[data-detalle="${id}"]`);
-    if (!fila) return;
-    if (!mantener && expandido === id) { fila.hidden = true; expandido = null; return; }
+    if (!mantener && expandido === id) { cajaControles.hidden = true; expandido = null; return; }
     expandido = id;
     const r = await api(`/riesgos/${id}`);
-    const celda = fila.firstElementChild;
-    celda.innerHTML = `
-      <div style="padding:10px 4px">
-        <h2 style="margin-bottom:10px">Controles de ${ui.esc(r.codigo)}</h2>
-        ${r.controles.length ? `<table><thead><tr>
-            <th>Descripción</th><th>Tipo</th><th class="num">Efectividad</th><th>Documentado</th><th></th>
-          </tr></thead><tbody>${r.controles.map(c => `<tr>
-            <td>${ui.esc(c.descripcion)}</td><td>${ui.esc(c.tipo)}</td>
-            <td class="num">${c.efectividad} / 5</td>
-            <td>${c.documentado ? 'Sí' : 'No'}</td>
-            <td style="text-align:right">${puede('controles.gestionar')
-              ? `<button class="peligro" data-accion="borrar-control" data-id="${c.id}">Quitar</button>` : ''}</td>
-          </tr>`).join('')}</tbody></table>`
-          : '<p style="color:var(--ink-muted)">Sin controles cargados: el riesgo residual es igual al inherente.</p>'}
-        ${puede('controles.gestionar') ? `
-          <form data-form-control="${id}" class="fila" style="margin-top:12px;align-items:end">
-            <div class="campo" style="margin:0"><label>Descripción del control</label>
-              <input name="descripcion" required maxlength="500"></div>
-            <div class="campo" style="margin:0"><label>Tipo</label><select name="tipo">
-              <option>Preventivo</option><option>Detectivo</option><option>Correctivo</option></select></div>
-            <div class="campo" style="margin:0"><label>Efectividad (1-5)</label>
-              <select name="efectividad">${[1,2,3,4,5].map(v => `<option${v===3?' selected':''}>${v}</option>`).join('')}</select></div>
-            <div class="campo" style="margin:0"><label>
-              <input type="checkbox" name="documentado" style="width:auto"> Documentado</label></div>
-            <div><button class="primario">Agregar control</button></div>
-          </form>` : ''}
-      </div>`;
-    fila.hidden = false;
+    cajaControles.innerHTML = `
+      <div class="acciones" style="justify-content:space-between;margin-bottom:10px">
+        <h2 style="margin:0">Controles de ${ui.esc(r.codigo)}</h2>
+        <button class="accion" data-cerrar-controles>Cerrar</button>
+      </div>
+      <div style="overflow-x:auto">
+      ${r.controles.length ? `<table><thead><tr>
+          <th>Descripción</th><th>Tipo</th><th class="num">Efectividad</th><th>Documentado</th><th></th>
+        </tr></thead><tbody>${r.controles.map(c => `<tr>
+          <td>${ui.esc(c.descripcion)}</td><td>${ui.esc(c.tipo)}</td>
+          <td class="num">${c.efectividad} / 5</td>
+          <td>${c.documentado ? 'Sí' : 'No'}</td>
+          <td style="text-align:right">${puede('controles.gestionar')
+            ? `<button class="peligro" data-accion="borrar-control" data-id="${c.id}">Quitar</button>` : ''}</td>
+        </tr>`).join('')}</tbody></table>`
+        : '<p style="color:var(--ink-muted)">Sin controles cargados: el riesgo residual es igual al inherente.</p>'}
+      </div>
+      ${puede('controles.gestionar') ? `
+        <form data-form-control="${id}" class="fila" style="margin-top:12px;align-items:end">
+          <div class="campo" style="margin:0"><label>Descripción del control</label>
+            <input name="descripcion" required maxlength="500"></div>
+          <div class="campo" style="margin:0"><label>Tipo</label><select name="tipo">
+            <option>Preventivo</option><option>Detectivo</option><option>Correctivo</option></select></div>
+          <div class="campo" style="margin:0"><label>Efectividad (1-5)</label>
+            <select name="efectividad">${[1,2,3,4,5].map(v => `<option${v===3?' selected':''}>${v}</option>`).join('')}</select></div>
+          <div class="campo" style="margin:0"><label>
+            <input type="checkbox" name="documentado" style="width:auto"> Documentado</label></div>
+          <div><button class="primario">Agregar control</button></div>
+        </form>` : ''}`;
+    cajaControles.hidden = false;
+    if (!mantener) cajaControles.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   // ─── Acciones de la tabla ────────────────────────────────────────────────
@@ -196,14 +203,24 @@
         await api(`/riesgos/${id}`, { method: 'DELETE' });
         return ui.aviso('Riesgo eliminado', 'ok');
       }
-      if (b.dataset.accion === 'borrar-control') {
-        await api(`/controles/${id}`, { method: 'DELETE' });
-        return ui.aviso('Control eliminado', 'ok');
-      }
     } catch (err) { ui.aviso(err.message); }
   });
 
-  document.getElementById('tabla').addEventListener('submit', async e => {
+  // ─── Acciones dentro del panel de controles (fuera de la tabla) ──────────
+  cajaControles.addEventListener('click', async e => {
+    if (e.target.closest('[data-cerrar-controles]')) {
+      cajaControles.hidden = true; expandido = null; return;
+    }
+    const b = e.target.closest('button[data-accion="borrar-control"]');
+    if (!b) return;
+    try {
+      await api(`/controles/${b.dataset.id}`, { method: 'DELETE' });
+      ui.aviso('Control eliminado', 'ok');
+      if (expandido) abrirControles(expandido, true);   // refrescar el panel
+    } catch (err) { ui.aviso(err.message); }
+  });
+
+  cajaControles.addEventListener('submit', async e => {
     const f = e.target.closest('form[data-form-control]');
     if (!f) return;
     e.preventDefault();
@@ -213,6 +230,7 @@
         descripcion: d.get('descripcion'), tipo: d.get('tipo'),
         efectividad: Number(d.get('efectividad')), documentado: d.get('documentado') === 'on' } });
       ui.aviso('Control agregado: el riesgo residual se recalculó', 'ok');
+      if (expandido) abrirControles(expandido, true);   // refrescar la lista del panel
     } catch (err) { ui.aviso(err.message); }
   });
 

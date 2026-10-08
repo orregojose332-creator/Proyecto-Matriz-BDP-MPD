@@ -42,7 +42,7 @@ const entrar = async (u, p) => (await llamar('/auth/login', { metodo: 'POST', cu
 
   console.log('\n--- "+ TAREA" SOBRE EL RIESGO ---');
   r = await llamar('/tareas', { metodo: 'POST', token: admin, cuerpo: {
-    titulo: 'Verificar controles del riesgo PEP', tipo: 'Control programado', prioridad: 'Alta',
+    titulo: 'Verificar controles del riesgo PEP', tipo: 'Control extraordinario', prioridad: 'Alta',
     riesgo_id: riesgo, fecha_programada: '2026-10-07', fecha_limite: '2026-10-14' } });
   ok(r.estado === 201, 'tarea creada desde el riesgo');
   const tarea = r.datos.id;

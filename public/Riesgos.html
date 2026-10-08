@@ -65,6 +65,9 @@
 .hist-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .hist-item { background: var(--plane); border-radius: 8px; padding: 9px 12px; min-width: 0; }
 .hist-fila { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+a.hist-titulo { font-size: 13.5px; font-weight: 600; flex: 1; min-width: 150px;
+  color: var(--serie-1); text-decoration: none; }
+a.hist-titulo:hover { text-decoration: underline; }
 .hist-titulo { font-size: 13.5px; font-weight: 600; flex: 1; min-width: 150px; }
 .hist-meta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px;
   font-size: 11.5px; color: var(--ink-muted); }
@@ -129,50 +132,6 @@
     </form>
   </div>
 
-  <div class="tarjeta" id="caja-tarea" hidden style="margin-bottom:16px">
-    <h2 id="tarea-titulo">Nueva tarea</h2>
-    <form id="form-tarea">
-      <input type="hidden" id="t-riesgo">
-      <div class="fila">
-        <div class="campo"><label for="t-titulo">Título</label><input id="t-titulo" required maxlength="200"></div>
-        <div class="campo"><label for="t-tipo">Tipo</label>
-          <select id="t-tipo">
-            <option value="Auditoria">Auditoría</option>
-            <option value="Control programado">Control programado</option>
-            <option value="Especial">Especial (hurto, acoso, denuncia…)</option>
-          </select></div>
-        <div class="campo"><label for="t-prioridad">Prioridad</label>
-          <select id="t-prioridad"><option>Baja</option><option selected>Media</option><option>Alta</option></select></div>
-      </div>
-      <div class="fila">
-        <div class="campo"><label for="t-fecha">Fecha programada</label><input id="t-fecha" type="date" required></div>
-        <div class="campo"><label for="t-limite">Fecha límite</label><input id="t-limite" type="date"></div>
-        <div class="campo"><label for="t-resp">Responsable</label><select id="t-resp"><option value="">—</option></select></div>
-      </div>
-      <!-- Solo para las Especiales: de que caso se trata. Se muestra al elegir
-           el tipo, porque en una auditoría de rutina no significa nada. -->
-      <div class="fila" id="fila-especial" hidden>
-        <div class="campo"><label for="t-categoria">De qué se trata el caso</label>
-          <select id="t-categoria">
-            <option>Hurto</option><option>Acoso</option>
-            <option>Canal de denuncias</option><option>Conflicto de interes</option>
-            <option>Fraude interno</option><option>Otro</option>
-          </select></div>
-        <div class="campo"><label for="t-confidencial">Visibilidad</label>
-          <label style="display:flex;gap:8px;align-items:center;padding-top:7px;font-weight:400">
-            <input type="checkbox" id="t-confidencial" checked style="width:auto;margin:0">
-            Reservado: solo el responsable y los cargos autorizados
-          </label></div>
-      </div>
-      <div class="campo"><label for="t-desc">Descripción</label>
-        <textarea id="t-desc" rows="2" maxlength="1000"></textarea></div>
-      <div class="acciones">
-        <button class="primario">Agendar tarea</button>
-        <button type="button" id="btn-cancelar-tarea">Cancelar</button>
-      </div>
-    </form>
-  </div>
-
   <div class="fichas" id="fichas"></div>
 </main>
 
@@ -194,7 +153,6 @@
   document.getElementById('f-factor').innerHTML += opcs(cat.factores);
   document.getElementById('r-factor').innerHTML  = opcs(cat.factores);
   document.getElementById('r-resp').innerHTML   += opcs(cat.usuarios);
-  document.getElementById('t-resp').innerHTML   += opcs(cat.usuarios);
   const niveles = t => cat.niveles.filter(n => n.tipo === t)
     .map(n => `<option value="${n.valor}">${n.valor} — ${ui.esc(n.etiqueta)}</option>`).join('');
   document.getElementById('r-prob').innerHTML = niveles('probabilidad');
@@ -332,10 +290,11 @@
     return `<li class="hist-item">
       <div class="hist-fila">
         <span class="codigo">${ui.esc(t.codigo)}</span>
-        <span class="hist-titulo">${ui.esc(t.titulo)}</span>
+        <a class="hist-titulo" href="Tarea.html?id=${t.id}">${ui.esc(t.titulo)}</a>
         <span class="etiqueta">${ui.esc(t.tipo)}${
           t.categoria_especial ? ' · ' + ui.esc(t.categoria_especial) : ''}</span>
         ${Number(t.confidencial) ? '<span class="etiqueta reservado">Reservado</span>' : ''}
+        ${Number(t.hallazgos_count) ? `<span class="etiqueta">${t.hallazgos_count} hallazgo(s)</span>` : ''}
       </div>
       <div class="hist-meta">
         <span>${ui.esc(t.responsable_nombre || 'sin responsable')}</span>
@@ -474,63 +433,12 @@
   });
 
   // ─── + Tarea sobre un riesgo ─────────────────────────────────────────────
-  const cajaT = document.getElementById('caja-tarea');
-  document.getElementById('btn-cancelar-tarea').onclick = () => { cajaT.hidden = true; };
-
-  const tipoT  = document.getElementById('t-tipo');
-  const filaEsp = document.getElementById('fila-especial');
-  /** El campo de categoría solo aparece en las Especiales, y solo es obligatorio
-   *  ahí: el required se pone y se quita con el tipo, no queda fijo. */
-  function sincronizarTipo() {
-    const esp = tipoT.value === 'Especial';
-    filaEsp.hidden = !esp;
-    document.getElementById('t-categoria').required = esp;
-    if (esp) document.getElementById('t-confidencial').checked = true;
-  }
-  tipoT.onchange = sincronizarTipo;
-
+  // La carga de una tarea pasó a ser una pantalla propia (informe completo:
+  // antecedentes, hallazgos, recomendaciones y plan de acción). Desde acá solo
+  // se abre esa pantalla, ya apuntada al riesgo.
   function nuevaTarea(idRiesgo) {
-    const r = lista.find(x => x.id === idRiesgo);
-    document.getElementById('form-tarea').reset();
-    sincronizarTipo();
-    document.getElementById('t-riesgo').value = idRiesgo;
-    // Arranca con un título propuesto: casi siempre se trata de verificar o
-    // reforzar el control del riesgo que se está mirando.
-    document.getElementById('t-titulo').value = `Verificar controles de ${r.codigo}`;
-    document.getElementById('t-desc').value = r.descripcion;
-    document.getElementById('t-fecha').value = new Date().toISOString().slice(0, 10);
-    const limite = new Date(); limite.setDate(limite.getDate() + 7);
-    document.getElementById('t-limite').value = limite.toISOString().slice(0, 10);
-    document.getElementById('t-resp').value = r.responsable_id || '';
-    document.getElementById('t-prioridad').value =
-      ['Alto', 'Critico'].includes(r.residual_nivel) ? 'Alta' : 'Media';
-    document.getElementById('tarea-titulo').textContent = `Nueva tarea sobre ${r.codigo}`;
-    cajaT.hidden = false;
-    cajaT.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    location.href = `Tarea.html?riesgo=${idRiesgo}`;
   }
-
-  document.getElementById('form-tarea').addEventListener('submit', async e => {
-    e.preventDefault();
-    const esp = tipoT.value === 'Especial';
-    const idRiesgo = Number(document.getElementById('t-riesgo').value);
-    try {
-      await api('/tareas', { method: 'POST', cuerpo: {
-        titulo:      document.getElementById('t-titulo').value.trim(),
-        descripcion: document.getElementById('t-desc').value.trim() || null,
-        tipo:        tipoT.value,
-        categoria_especial: esp ? document.getElementById('t-categoria').value : null,
-        confidencial: esp ? document.getElementById('t-confidencial').checked : false,
-        prioridad:   document.getElementById('t-prioridad').value,
-        riesgo_id:   idRiesgo,
-        fecha_programada: document.getElementById('t-fecha').value,
-        fecha_limite:     document.getElementById('t-limite').value || null,
-        responsable_id:   document.getElementById('t-resp').value || null } });
-      cajaT.hidden = true;
-      // La tarea recién creada se ve en el acto: se abre el historial del riesgo.
-      if (puede('tareas.ver')) historiales.add(idRiesgo);
-      ui.aviso(esp ? 'Caso especial registrado' : 'Tarea creada y vinculada al riesgo', 'ok');
-    } catch (err) { ui.aviso(err.message); }
-  });
 
   /** Todas las tareas del riesgo, en cualquier estado. El servidor ya quita
    *  las que el cargo no puede ver, así que acá no hay nada que filtrar. */

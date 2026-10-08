@@ -50,8 +50,8 @@
       <div><label for="f-resp">Responsable</label><select id="f-resp"><option value="">Todos</option></select></div>
       <div><label for="f-tipo">Tipo</label><select id="f-tipo">
         <option value="">Todos</option>
-        <option value="Auditoria">Auditoría</option>
-        <option value="Control programado">Control programado</option>
+        <option value="Tarea programada">Tarea programada</option>
+        <option value="Control extraordinario">Control extraordinario</option>
         <option value="Especial">Especial</option></select></div>
       <div><label for="f-buscar">Buscar</label><input id="f-buscar" placeholder="título o riesgo"></div>
       <div style="align-self:end"><label style="display:flex;gap:7px;align-items:center;font-size:13px;color:var(--ink-1);font-weight:400">
@@ -130,10 +130,12 @@
         ${t.fecha_limite ? `<span>Límite: ${ui.fecha(t.fecha_limite)}</span>` : ''}
         ${t.riesgo_codigo ? `<span>Riesgo ${ui.esc(t.riesgo_codigo)}</span>` : ''}
         ${Number(t.traspasos) ? `<span>${t.traspasos} traspaso(s)</span>` : ''}
+        ${Number(t.hallazgos_count) ? `<span>${t.hallazgos_count} hallazgo(s)</span>` : ''}
       </div>
       ${abierta && d ? panelFases(d) : ''}
       <div class="pie">
         <button class="accion" data-fases="${t.id}">${abierta ? '− Menos' : '+ Info'}</button>
+        <a class="accion" href="Tarea.html?id=${t.id}">Abrir informe</a>
         ${puede('tareas.avanzar') && !['Completada','Cancelada'].includes(t.estado)
           ? `<button class="accion primario" data-avanzar="${t.id}">Cambiar estado</button>` : ''}
       </div>

@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tarea · Matriz MDP</title>
+<link rel="icon" href="favicon.svg">
+<link rel="stylesheet" href="app.css">
+<style>
+  /* La pantalla de carga de una tarea/informe. Secciones apiladas, cada una
+     en su tarjeta, para que un formulario largo siga siendo legible. */
+  .seccion { margin-bottom: 16px; }
+  .seccion > h2 { display: flex; align-items: baseline; gap: 10px; }
+  .seccion > h2 .ayuda { font-size: 12px; font-weight: 400; color: var(--ink-muted); }
+
+  /* Un hallazgo es una ficha con su cadena completa: qué se encontró, qué
+     riesgo implica, qué recomienda auditoría y qué se compromete el área. */
+  .hallazgo { border: 1px solid var(--borde); border-radius: var(--radio);
+              padding: 14px; margin-bottom: 12px; background: var(--plane); }
+  .hallazgo .cab { display: flex; align-items: center; justify-content: space-between;
+                   gap: 10px; margin-bottom: 10px; }
+  .hallazgo .cab strong { font-size: 13px; }
+  .hallazgo .campo:last-child { margin-bottom: 0; }
+  .etq-equipo { font-size: 11px; color: var(--serie-1); font-weight: 600; }
+  .etq-area   { font-size: 11px; color: var(--serie-2); font-weight: 600; }
+  textarea { resize: vertical; min-height: 54px; }
+  .barra-acciones { display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+                    position: sticky; bottom: 0; background: var(--surface-1);
+                    border-top: 1px solid var(--borde); padding: 14px 0; margin-top: 4px; }
+  .volver { display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
+            color: var(--ink-2); text-decoration: none; margin-bottom: 10px; }
+  .volver:hover { color: var(--ink-1); }
+  .solo-lectura input, .solo-lectura select, .solo-lectura textarea { pointer-events: none;
+    background: var(--plane); opacity: .85; }
+</style>
+</head>
+<body>
+<main>
+  <a class="volver" id="volver" href="Riesgos.html">← Volver</a>
+  <h1 id="titulo-pagina">Nueva tarea</h1>
+  <p class="sub" id="sub"></p>
+  <div id="aviso" class="aviso error" hidden></div>
+
+  <form id="form">
+    <!-- ── Datos de la tarea ─────────────────────────────────────────────── -->
+    <section class="tarjeta seccion">
+      <h2>Datos de la tarea</h2>
+      <div class="campo"><label for="f-titulo">Título</label>
+        <input id="f-titulo" required maxlength="200"></div>
+      <div class="fila">
+        <div class="campo"><label for="f-tipo">Tipo de trabajo</label>
+          <select id="f-tipo">
+            <option value="Tarea programada">Tarea programada</option>
+            <option value="Control extraordinario">Control extraordinario</option>
+          </select></div>
+        <div class="campo"><label for="f-prioridad">Prioridad</label>
+          <select id="f-prioridad"><option>Baja</option><option selected>Media</option><option>Alta</option></select></div>
+        <div class="campo"><label for="f-resp">Responsable de la tarea</label>
+          <select id="f-resp"><option value="">— sin asignar —</option></select></div>
+      </div>
+      <div class="fila">
+        <div class="campo"><label for="f-prog">Fecha programada</label>
+          <input id="f-prog" type="date" required></div>
+        <div class="campo"><label for="f-limite">Fecha límite para completar</label>
+          <input id="f-limite" type="date"></div>
+      </div>
+      <div class="campo"><label for="f-desc">Descripción del caso</label>
+        <textarea id="f-desc" rows="3" maxlength="1000"></textarea></div>
+    </section>
+
+    <!-- ── Encabezado del informe ────────────────────────────────────────── -->
+    <section class="tarjeta seccion">
+      <h2>Informe <span class="ayuda">antecedentes y alcance del trabajo</span></h2>
+      <div class="campo"><label for="f-area">Área auditada o controlada</label>
+        <input id="f-area" maxlength="200" placeholder="Proceso, sector o sucursal"></div>
+      <div class="campo"><label for="f-antec">Antecedentes</label>
+        <textarea id="f-antec" rows="3" maxlength="2000"
+          placeholder="Qué motivó el trabajo, observaciones previas, contexto"></textarea></div>
+    </section>
+
+    <!-- ── Hallazgos ─────────────────────────────────────────────────────── -->
+    <section class="tarjeta seccion">
+      <h2>Hallazgos
+        <span class="ayuda">cada hallazgo con su riesgo, recomendación y plan de acción</span></h2>
+      <div id="lista-hallazgos"></div>
+      <button type="button" class="accion" id="btn-hallazgo">+ Agregar hallazgo</button>
+    </section>
+
+    <div class="barra-acciones" id="barra-guardar">
+      <button class="primario" id="btn-guardar">Guardar tarea</button>
+      <button type="button" id="btn-cancelar">Cancelar</button>
+      <span id="estado-guardar" style="font-size:12.5px;color:var(--ink-muted)"></span>
+    </div>
+  </form>
+</main>
+
+<script src="app.js"></script>
+<script>
+'use strict';
+(async () => {
+  const u = await MDP.iniciar({ permiso: 'tareas.ver' });
+  if (!u) return;
+  const { ui, api, puede } = MDP;
+
+  const par = new URLSearchParams(location.search);
+  const idTarea  = par.get('id')     ? Number(par.get('id'))     : null;
+  const idRiesgo = par.get('riesgo') ? Number(par.get('riesgo')) : null;
+  const G = id => document.getElementById(id);
+
+  // Quién puede qué: crear una tarea nueva exige tareas.crear; editar una
+  // existente exige tareas.editar. Sin el permiso, la pantalla es de lectura.
+  const esNueva   = !idTarea;
+  const puedeCrear = puede('tareas.crear');
+  const puedeEditar = puede('tareas.editar');
+  const soloLectura = esNueva ? !puedeCrear : !puedeEditar;
+
+  const cat = await api('/catalogos');
+  const opcionesResp = sel => `<option value="">— sin asignar —</option>` +
+    cat.usuarios.map(x =>
+      `<option value="${x.id}"${Number(sel) === x.id ? ' selected' : ''}>${ui.esc(x.nombre)}</option>`).join('');
+  G('f-resp').innerHTML = opcionesResp('');
+
+  // ─── Hallazgos: filas que se agregan y se quitan ───────────────────────────
+  let seqHallazgo = 0;
+  const ESTADOS_H = ['Pendiente', 'En proceso', 'Cumplido'];
+
+  function filaHallazgo(h = {}) {
+    const n = ++seqHallazgo;
+    const div = document.createElement('div');
+    div.className = 'hallazgo';
+    div.dataset.n = n;
+    div.innerHTML = `
+      <div class="cab">
+        <strong>Hallazgo <span class="num">#${n}</span></strong>
+        <button type="button" class="accion peligro" data-quitar="${n}">Quitar</button>
+      </div>
+      <div class="campo"><label>Hallazgo (qué se encontró)</label>
+        <textarea data-h="hallazgo" rows="2" maxlength="2000" required>${ui.esc(h.hallazgo || '')}</textarea></div>
+      <div class="campo"><label>Riesgo encontrado</label>
+        <textarea data-h="riesgo" rows="2" maxlength="2000">${ui.esc(h.riesgo || '')}</textarea></div>
+      <div class="campo"><label><span class="etq-equipo">Recomendación</span> — del equipo de auditoría</label>
+        <textarea data-h="recomendacion" rows="2" maxlength="2000">${ui.esc(h.recomendacion || '')}</textarea></div>
+      <div class="campo"><label><span class="etq-area">Plan de acción</span> — compromiso del área auditada</label>
+        <textarea data-h="plan_accion" rows="2" maxlength="2000">${ui.esc(h.plan_accion || '')}</textarea></div>
+      <div class="fila">
+        <div class="campo" style="margin-bottom:0"><label>Responsable del plan</label>
+          <select data-h="responsable_id">${opcionesResp(h.responsable_id)}</select></div>
+        <div class="campo" style="margin-bottom:0"><label>Área responsable</label>
+          <input data-h="area_responsable" maxlength="200" value="${ui.esc(h.area_responsable || '')}"></div>
+        <div class="campo" style="margin-bottom:0"><label>Fecha de compromiso</label>
+          <input data-h="fecha_compromiso" type="date" value="${h.fecha_compromiso ? String(h.fecha_compromiso).slice(0,10) : ''}"></div>
+        <div class="campo" style="margin-bottom:0"><label>Estado del plan</label>
+          <select data-h="estado">${ESTADOS_H.map(e =>
+            `<option${h.estado === e ? ' selected' : ''}>${e}</option>`).join('')}</select></div>
+      </div>`;
+    return div;
+  }
+
+  function agregarHallazgo(h) {
+    G('lista-hallazgos').appendChild(filaHallazgo(h));
+  }
+
+  G('lista-hallazgos').addEventListener('click', e => {
+    const b = e.target.closest('button[data-quitar]');
+    if (!b) return;
+    b.closest('.hallazgo').remove();
+    // Si se quitan todos, dejar el aviso de que no hay hallazgos cargados.
+    renumerar();
+  });
+
+  function renumerar() {
+    [...G('lista-hallazgos').querySelectorAll('.hallazgo .num')]
+      .forEach((el, i) => { el.textContent = '#' + (i + 1); });
+  }
+
+  G('btn-hallazgo').onclick = () => { agregarHallazgo(); renumerar(); };
+
+  // Junta los hallazgos del DOM en el arreglo que espera el servidor.
+  function leerHallazgos() {
+    return [...G('lista-hallazgos').querySelectorAll('.hallazgo')].map(div => {
+      const v = clave => div.querySelector(`[data-h="${clave}"]`).value;
+      return {
+        hallazgo: v('hallazgo').trim(), riesgo: v('riesgo').trim(),
+        recomendacion: v('recomendacion').trim(), plan_accion: v('plan_accion').trim(),
+        responsable_id: v('responsable_id') || null,
+        area_responsable: v('area_responsable').trim(),
+        fecha_compromiso: v('fecha_compromiso') || null,
+        estado: v('estado'),
+      };
+    }).filter(h => h.hallazgo);   // sin texto no es un hallazgo
+  }
+
+  // ─── Carga inicial ─────────────────────────────────────────────────────────
+  let riesgo = null;
+  if (idTarea) {
+    // Editar / ver una tarea existente.
+    const t = await api(`/tareas/${idTarea}`);
+    G('titulo-pagina').textContent = soloLectura ? `Tarea ${ui.esc(t.codigo)}` : `Editar ${ui.esc(t.codigo)}`;
+    G('f-titulo').value = t.titulo || '';
+    if (![...G('f-tipo').options].some(o => o.value === t.tipo))
+      G('f-tipo').insertAdjacentHTML('beforeend', `<option value="${ui.esc(t.tipo)}">${ui.esc(t.tipo)}</option>`);
+    G('f-tipo').value = t.tipo;
+    G('f-prioridad').value = t.prioridad || 'Media';
+    G('f-resp').value = t.responsable_id || '';
+    G('f-prog').value = t.fecha_programada ? String(t.fecha_programada).slice(0, 10) : '';
+    G('f-limite').value = t.fecha_limite ? String(t.fecha_limite).slice(0, 10) : '';
+    G('f-desc').value = t.descripcion || '';
+    G('f-area').value = t.area_auditada || '';
+    G('f-antec').value = t.antecedentes || '';
+    (t.hallazgos || []).forEach(agregarHallazgo);
+    if (t.riesgo_codigo) G('sub').textContent = `Vinculada al riesgo ${t.riesgo_codigo}`;
+    G('volver').href = t.riesgo_id ? 'Riesgos.html' : 'Tareas.html';
+  } else {
+    // Tarea nueva. Si viene de un riesgo, se precargan título y responsable.
+    if (idRiesgo) {
+      riesgo = await api(`/riesgos/${idRiesgo}`);
+      G('titulo-pagina').textContent = `Nueva tarea sobre ${ui.esc(riesgo.codigo)}`;
+      G('sub').textContent = ui.esc(riesgo.descripcion);
+      G('f-titulo').value = `Verificar controles de ${riesgo.codigo}`;
+      G('f-desc').value = riesgo.descripcion;
+      G('f-area').value = riesgo.subfactor_nombre || '';
+      G('f-resp').value = riesgo.responsable_id || '';
+      G('f-prioridad').value = ['Alto', 'Critico'].includes(riesgo.residual_nivel) ? 'Alta' : 'Media';
+    }
+    G('f-prog').value = new Date().toISOString().slice(0, 10);
+    const lim = new Date(); lim.setDate(lim.getDate() + 7);
+    G('f-limite').value = lim.toISOString().slice(0, 10);
+    agregarHallazgo();   // arranca con un hallazgo en blanco
+  }
+
+  // Modo lectura: todo visible pero no editable, y sin botón de guardar.
+  if (soloLectura) {
+    G('form').classList.add('solo-lectura');
+    G('barra-guardar').hidden = true;
+    G('btn-hallazgo').hidden = true;
+  }
+
+  // ─── Guardar ───────────────────────────────────────────────────────────────
+  G('btn-cancelar').onclick = () => { location.href = G('volver').href; };
+
+  G('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    if (soloLectura) return;
+    const prog = G('f-prog').value, limite = G('f-limite').value;
+    if (limite && limite < prog)
+      return ui.aviso('La fecha límite no puede ser anterior a la programada');
+
+    const cuerpo = {
+      titulo: G('f-titulo').value.trim(),
+      tipo: G('f-tipo').value,
+      prioridad: G('f-prioridad').value,
+      responsable_id: G('f-resp').value || null,
+      fecha_programada: prog,
+      fecha_limite: limite || null,
+      descripcion: G('f-desc').value.trim() || null,
+      area_auditada: G('f-area').value.trim() || null,
+      antecedentes: G('f-antec').value.trim() || null,
+      hallazgos: leerHallazgos(),
+      riesgo_id: idRiesgo || (riesgo && riesgo.id) || undefined,
+    };
+
+    G('btn-guardar').disabled = true;
+    G('estado-guardar').textContent = 'Guardando…';
+    try {
+      if (idTarea) await api(`/tareas/${idTarea}`, { method: 'PUT', cuerpo });
+      else         await api('/tareas', { method: 'POST', cuerpo });
+      // Vuelve al riesgo (o a Tareas) donde la tarea ya aparece en el historial.
+      location.href = G('volver').href;
+    } catch (err) {
+      ui.aviso(err.message);
+      G('btn-guardar').disabled = false;
+      G('estado-guardar').textContent = '';
+    }
+  });
+})();
+</script>
+</body>
+</html>

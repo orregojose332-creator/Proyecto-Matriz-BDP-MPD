@@ -9,3 +9,6 @@ respaldos/
 *.log
 .DS_Store
 Thumbs.db
+
+# Capturas que generan las pruebas de navegador en la raíz
+corte-recuperado.png

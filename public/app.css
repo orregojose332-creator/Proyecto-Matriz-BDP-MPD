@@ -175,6 +175,11 @@ button.primario { background: var(--serie-1); border-color: var(--serie-1); colo
 button.primario:hover { filter: brightness(1.08); }
 button.peligro { color: var(--nivel-critico); border-color: var(--nivel-critico); }
 button:disabled { opacity: .5; cursor: not-allowed; }
+/* Un enlace que debe verse como botón de acción (p. ej. «Abrir informe»). */
+a.accion { display: inline-flex; align-items: center; font: inherit; font-weight: 600;
+  padding: 8px 16px; border-radius: 8px; border: 1px solid var(--axis);
+  background: var(--surface-1); color: var(--ink-1); cursor: pointer; text-decoration: none; }
+a.accion:hover { background: var(--plane); }
 .acciones { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
 /* ─── Avisos ─────────────────────────────────────────────────────────────── */

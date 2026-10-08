@@ -632,15 +632,53 @@ async function api(req, res, url) {
 
   /** Los tres tipos de trabajo del area. 'Auditoria' y 'Control programado' son
    *  trabajo de rutina que se agenda; 'Especial' es un caso que aparece solo. */
-  const TIPOS_TAREA = ['Auditoria', 'Control programado', 'Especial'];
+  // El vocabulario de tipos todavia se pule con el area; es texto validado,
+  // no un ENUM, para cambiarlo sin migrar. Los dos primeros son los que ofrece
+  // el formulario de informe; 'Especial' se conserva para los casos reservados
+  // (hurto, acoso, denuncias) que ya existian, con su regla de confidencialidad.
+  const TIPOS_TAREA = ['Tarea programada', 'Control extraordinario', 'Especial'];
   const CATEGORIAS_ESPECIAL = ['Hurto', 'Acoso', 'Canal de denuncias',
                                'Conflicto de interes', 'Fraude interno', 'Otro'];
+  const ESTADOS_HALLAZGO = ['Pendiente', 'En proceso', 'Cumplido'];
+
+  /** Normaliza la lista de hallazgos que llega del formulario de informe.
+   *  Descarta los vacios (un hallazgo sin texto no es un hallazgo) y recorta
+   *  cada campo. Devuelve filas listas para insertar. */
+  function normalizarHallazgos(lista) {
+    if (!Array.isArray(lista)) return [];
+    return lista
+      .map(h => ({
+        hallazgo:         String(h.hallazgo || '').trim(),
+        riesgo:           String(h.riesgo || '').trim() || null,
+        recomendacion:    String(h.recomendacion || '').trim() || null,
+        plan_accion:      String(h.plan_accion || '').trim() || null,
+        responsable_id:   h.responsable_id ? Number(h.responsable_id) : null,
+        area_responsable: String(h.area_responsable || '').trim().slice(0, 200) || null,
+        fecha_compromiso: h.fecha_compromiso || null,
+        estado:           ESTADOS_HALLAZGO.includes(h.estado) ? h.estado : 'Pendiente',
+      }))
+      .filter(h => h.hallazgo);
+  }
+
+  /** Inserta los hallazgos de una tarea dentro de una transaccion ya abierta. */
+  async function guardarHallazgos(cx, tareaId, hallazgos) {
+    for (let i = 0; i < hallazgos.length; i++) {
+      const h = hallazgos[i];
+      await cx.query(
+        `INSERT INTO tarea_hallazgos (tarea_id, orden, hallazgo, riesgo, recomendacion,
+            plan_accion, responsable_id, area_responsable, fecha_compromiso, estado)
+         VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        [tareaId, i, h.hallazgo, h.riesgo, h.recomendacion, h.plan_accion,
+         h.responsable_id, h.area_responsable, h.fecha_compromiso, h.estado]);
+    }
+  }
 
   const SELECT_TAREA = `
     SELECT t.*, u.nombre AS responsable_nombre, r.codigo AS riesgo_codigo,
            c.descripcion AS control_descripcion,
            (SELECT COUNT(*) FROM tarea_traspasos x
-             WHERE x.tarea_id = t.id AND x.cambio_responsable = 1) AS traspasos
+             WHERE x.tarea_id = t.id AND x.cambio_responsable = 1) AS traspasos,
+           (SELECT COUNT(*) FROM tarea_hallazgos h WHERE h.tarea_id = t.id) AS hallazgos_count
       FROM tareas t
       LEFT JOIN usuarios  u ON u.id = t.responsable_id
       LEFT JOIN riesgos   r ON r.id = t.riesgo_id
@@ -742,7 +780,11 @@ async function api(req, res, url) {
          LEFT JOIN usuarios uh ON uh.id = tt.responsable_hasta_id
          LEFT JOIN usuarios uq ON uq.id = tt.usuario_id
         WHERE tt.tarea_id = ? ORDER BY tt.id`, [rec[1]]);
-    return json(res, { ...t, traspasos });
+    const [hallazgos] = await DB.query(
+      `SELECT h.*, u.nombre AS responsable_nombre
+         FROM tarea_hallazgos h LEFT JOIN usuarios u ON u.id = h.responsable_id
+        WHERE h.tarea_id = ? ORDER BY h.orden, h.id`, [rec[1]]);
+    return json(res, { ...t, traspasos, hallazgos });
   }
 
   if (rec[0] === 'tareas' && rec.length === 1 && metodo === 'POST') {
@@ -753,7 +795,7 @@ async function api(req, res, url) {
     if (b.fecha_limite && b.fecha_limite < b.fecha_programada)
       return err(res, 'La fecha limite no puede ser anterior a la programada', 400);
 
-    const tipo = TIPOS_TAREA.includes(b.tipo) ? b.tipo : 'Auditoria';
+    const tipo = TIPOS_TAREA.includes(b.tipo) ? b.tipo : 'Tarea programada';
     const esEspecial = tipo === 'Especial';
     if (esEspecial && !CATEGORIAS_ESPECIAL.includes(b.categoria_especial))
       return err(res, 'Un caso Especial necesita indicar de que se trata', 400);
@@ -764,16 +806,19 @@ async function api(req, res, url) {
     const cx = await DB.getConnection();
     try {
       await cx.beginTransaction();
+      const hallazgos = normalizarHallazgos(b.hallazgos);
       const [r] = await cx.query(
-        `INSERT INTO tareas (codigo, titulo, descripcion, tipo, categoria_especial,
-            confidencial, riesgo_id, control_id,
+        `INSERT INTO tareas (codigo, titulo, descripcion, antecedentes, area_auditada,
+            tipo, categoria_especial, confidencial, riesgo_id, control_id,
             fecha_programada, fecha_limite, prioridad, estado, responsable_id, creado_por)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,'Pendiente',?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Pendiente',?,?)`,
         [b.codigo || `T-${Date.now().toString().slice(-8)}`, b.titulo, b.descripcion || null,
+         b.antecedentes || null, b.area_auditada || null,
          tipo, esEspecial ? b.categoria_especial : null, confidencial ? 1 : 0,
          b.riesgo_id || null, b.control_id || null,
          b.fecha_programada, b.fecha_limite || null, b.prioridad || 'Media',
          b.responsable_id || null, s.id]);
+      await guardarHallazgos(cx, r.insertId, hallazgos);
       // Primer traspaso: deja el punto de partida del que se miden las fases.
       await cx.query(
         `INSERT INTO tarea_traspasos (tarea_id, estado_desde, estado_hasta,
@@ -817,14 +862,31 @@ async function api(req, res, url) {
     const confidencial = b.confidencial === undefined
       ? Boolean(previa.confidencial) : Boolean(b.confidencial);
 
-    const [r] = await DB.query(
-      `UPDATE tareas SET titulo=?, descripcion=?, tipo=?, categoria_especial=?,
-              confidencial=?, riesgo_id=?, control_id=?,
-              fecha_programada=?, fecha_limite=?, prioridad=? WHERE id=?`,
-      [b.titulo, b.descripcion || null, tipo, esEspecial ? categoria : null,
-       confidencial ? 1 : 0, b.riesgo_id || null, b.control_id || null, b.fecha_programada,
-       b.fecha_limite || null, b.prioridad || 'Media', rec[1]]);
-    if (!r.affectedRows) return err(res, 'Tarea no encontrada', 404);
+    const hallazgos = normalizarHallazgos(b.hallazgos);
+    const cx = await DB.getConnection();
+    try {
+      await cx.beginTransaction();
+      await cx.query(
+        `UPDATE tareas SET titulo=?, descripcion=?, antecedentes=?, area_auditada=?,
+                tipo=?, categoria_especial=?, confidencial=?, riesgo_id=?, control_id=?,
+                fecha_programada=?, fecha_limite=?, prioridad=? WHERE id=?`,
+        [b.titulo, b.descripcion || null, b.antecedentes || null, b.area_auditada || null,
+         tipo, esEspecial ? categoria : null, confidencial ? 1 : 0,
+         b.riesgo_id || null, b.control_id || null, b.fecha_programada,
+         b.fecha_limite || null, b.prioridad || 'Media', rec[1]]);
+      // Los hallazgos se reemplazan en bloque: el formulario siempre manda la
+      // lista completa, asi que borrar y volver a insertar es lo mas simple y
+      // no deja huerfanos ni duplicados.
+      if (b.hallazgos !== undefined) {
+        await cx.query('DELETE FROM tarea_hallazgos WHERE tarea_id=?', [rec[1]]);
+        await guardarHallazgos(cx, Number(rec[1]), hallazgos);
+      }
+      await cx.commit();
+    } catch (e) {
+      await cx.rollback();
+      if (e.code === 'ER_DUP_ENTRY') return err(res, 'Ya existe una tarea con ese codigo', 409);
+      throw e;
+    } finally { cx.release(); }
     await auditar('tarea_editada', { entidad: 'tarea', entidadId: Number(rec[1]), s, req });
     emitir('tareas', { accion: 'edicion', id: Number(rec[1]) });
     return json(res, { ok: true });

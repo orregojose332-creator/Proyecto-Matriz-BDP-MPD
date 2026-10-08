@@ -16,14 +16,17 @@ SEPRELAD en Paraguay.
 **Funcionando y probado**: usuarios, cargos y permisos; matriz con los cuatro
 factores y el cálculo inherente/residual; tablero con gráficos; actualización en
 vivo por SSE; calendario con medición de fases; apartados Riesgos y Tareas;
-Historial por riesgo; los tres tipos de tarea con casos reservados; respaldo y
-restauración; bitácora de auditoría.
+Historial por riesgo; la **tarea como informe de auditoría/control** (pantalla
+`Tarea.html`: antecedentes, área, hallazgos con recomendación y plan de acción);
+respaldo y restauración; bitácora de auditoría.
 
 **Decisiones tomadas que conviene revisar con el área:**
 
-- Los **casos especiales nacen reservados**. Si conviene al revés —que nazcan
-  abiertos y se marquen a mano— se cambia el valor por defecto en el `POST
-  /api/tareas` de `server.js`.
+- El **tipo de tarea** hoy es *Tarea programada* / *Control extraordinario*
+  (texto validado, no un ENUM, para cambiar la lista sin migrar). La opción de
+  crear un **caso reservado** (hurto, acoso, denuncias) salió de la pantalla al
+  rehacer «+ Tarea» como informe; la protección sigue viva en el servidor. Ver
+  «La tarea es un informe de auditoría / control».
 - **`Matriz` y `Riesgos` muestran los mismos datos** en dos formatos: la tabla
   densa para análisis y exportación, y la ficha legible para el uso diario. Si
   en la práctica resulta redundante, conviene fusionarlas en una sola pantalla.
@@ -57,10 +60,11 @@ todas las pantallas).
 - **Riesgos**: cada riesgo en una ficha legible, con un botón **+ info** que
   explica el tipo de riesgo, sus casos típicos y la situación concreta en la
   entidad, un **Historial** con sus tareas agrupadas por estado, y un botón
-  **+ Tarea** para abrir trabajo nuevo sobre ese riesgo.
-- **Tres tipos de trabajo**: auditoría, control programado y **caso especial**
-  (hurto, acoso, canal de denuncias), estos últimos reservados por defecto a los
-  cargos autorizados.
+  **+ Tarea** que abre la pantalla de carga del informe.
+- **La tarea es un informe de auditoría / control**: datos del trabajo,
+  antecedentes, área auditada y una lista de **hallazgos**, cada uno con su
+  riesgo, la **recomendación** (equipo de auditoría) y el **plan de acción**
+  (compromiso del área auditada) con su responsable y área.
 - **Tareas**: todo lo agendado agrupado por estado, con el historial de fases.
 - **Calendario** de tareas y controles agendados, con medición de cuánto tarda
   cada fase del trabajo y cuántas manos pasa.
@@ -243,37 +247,52 @@ según su nivel residual, las cifras del cálculo y tres acciones.
 - **Historial** lista las tareas de ese riesgo agrupadas en **sin iniciar, en
   proceso, completadas y canceladas**, con el total arriba. Exige `tareas.ver`.
 - **Editar** abre el formulario, y solo aparece con el permiso `riesgos.editar`.
-- **+ Tarea** crea trabajo sobre ese riesgo —solo lo crea; lo ya creado se
-  consulta en Historial—, con el título, el responsable y la prioridad ya
-  propuestos a partir del riesgo; exige `tareas.crear`.
+- **+ Tarea** abre la **pantalla de carga del informe** (`Tarea.html`) ya
+  apuntada a ese riesgo; exige `tareas.crear`. Lo ya creado se consulta en
+  Historial, no acá.
 
-Los dos paneles son independientes: se pueden tener abiertos a la vez, y el
-Historial se vuelve a pedir solo cuando una tarea cambia de estado, así que una
-tarea salta de grupo sin tocar el botón.
+Los dos paneles (+ Info e Historial) son independientes: se pueden tener
+abiertos a la vez, y el Historial se vuelve a pedir solo cuando una tarea cambia
+de estado, así que una tarea salta de grupo sin tocar el botón. Cada tarea del
+Historial es un enlace que abre su informe completo.
 
-### Los tres tipos de tarea
+### La tarea es un informe de auditoría / control
 
-| Tipo | Qué es |
-|---|---|
-| **Auditoría** | revisión planificada sobre un proceso o un área |
-| **Control programado** | verificación periódica de un control de la matriz |
-| **Especial** | caso puntual: hurto, acoso, canal de denuncias, conflicto de interés, fraude interno |
+Cargar una tarea es llenar un informe. La pantalla (`Tarea.html`) tiene tres
+bloques:
 
-Los dos primeros son trabajo de rutina y se agendan también desde el
-**Calendario**. Las **Especiales** no: nacen de un hecho concreto, piden indicar
-de qué se trata y se abren desde el riesgo.
+1. **Datos de la tarea** — título, tipo de trabajo, responsable, fecha
+   programada, fecha límite, prioridad y descripción del caso.
+2. **Informe** — área auditada o controlada, y antecedentes (qué motivó el
+   trabajo).
+3. **Hallazgos** — una lista; se agregan y se quitan. Cada hallazgo arrastra su
+   cadena completa:
 
-Una Especial **nace reservada**. Eso quiere decir que no aparece en la lista de
-tareas, ni se puede abrir por su id, ni mover de estado, salvo para:
+   | Campo | Quién lo pone |
+   |---|---|
+   | Hallazgo (qué se encontró) | equipo de auditoría |
+   | Riesgo encontrado | equipo de auditoría |
+   | **Recomendación** | **equipo de auditoría** |
+   | **Plan de acción** | **lo que el área auditada se compromete a cumplir** |
+   | Responsable del plan y área | a quién se le adjudica |
+   | Fecha de compromiso y estado | seguimiento del plan |
 
-- los cargos con el permiso `tareas.confidencial` (Administrador y Supervisor),
-- la persona responsable asignada, que sin verlo no podría trabajarlo,
-- y quien registró el caso, que ya conoce lo que escribió.
+El tipo de trabajo es **Tarea programada** o **Control extraordinario**. Es
+texto validado por el servidor, no un ENUM fijo, porque la clasificación todavía
+se está puliendo con el área: cambiar esa lista no obliga a migrar la base.
 
-La marca se puede quitar a propósito desde el formulario, pero el que se olvida
-de marcarla no expone una denuncia: el valor por defecto protege. La restricción
-se verifica en el servidor en cada pedido —listar, abrir, editar, avanzar y
-borrar—, no escondiendo el botón.
+Los hallazgos viven en la tabla `tarea_hallazgos` (una fila por hallazgo, con
+`ON DELETE CASCADE`: se van con la tarea). Al editar, la lista se reemplaza en
+bloque. Un hallazgo sin texto se descarta.
+
+> **Nota sobre los casos reservados.** Hasta esta versión, «+ Tarea» permitía
+> marcar un caso **Especial** (hurto, acoso, canal de denuncias) que nacía
+> *reservado*. Esa opción salió de la pantalla al rehacer «+ Tarea» como
+> informe. La protección sigue **viva en el servidor** —un caso marcado
+> `confidencial` no se lista, ni se abre por id, ni se edita o avanza salvo
+> para los cargos con `tareas.confidencial`, su responsable y quien lo
+> registró— pero hoy no hay una pantalla para crear uno nuevo. Si el área lo
+> necesita, se reincorpora como una opción aparte.
 
 La orientación y los casos típicos viven en el **subfactor**, no en el riesgo,
 porque describen la categoría y sirven para todos los riesgos que caen en ella.
@@ -283,7 +302,11 @@ contexto, que se completa con **Editar**.
 
 **Matriz** sigue existiendo como la tabla densa, para análisis y exportación.
 Muestra los mismos riesgos en otro formato: si en el uso resulta redundante,
-conviene fusionarlas en una sola pantalla.
+conviene fusionarlas en una sola pantalla. La tabla muestra probabilidad,
+impacto y **nivel** residual; las columnas numéricas de inherente y residual se
+quitaron por pedido del área. El panel de **Controles** y el de **Editar** se
+abren en su propia tarjeta, fuera de la tabla, para que el desplazamiento
+horizontal de la tabla no los deje tapados bajo la barra lateral.
 
 **Tareas** agrupa todo lo abierto por estado, con buscador, filtro por tipo,
 filtro de vencidas y el historial de fases de cada una. Es la vista de todas las
@@ -295,20 +318,20 @@ está **Calendario**.
 El módulo **Calendario** agenda tareas y controles sobre una rejilla mensual:
 cada día muestra lo programado, en color según su estado, y en rojo lo vencido.
 
+La pantalla muestra la rejilla del mes y, debajo, dos gráficos: **tiempo
+promedio por fase** y **tiempo retenido por responsable**. (Las tarjetas-resumen
+que había arriba —tiempo promedio de resolución, más rápida/más lenta, traspasos
+por tarea, vencidas— se quitaron por pedido del área; los dos gráficos quedan.)
+
 Lo que permite medir los tiempos es la tabla `tarea_traspasos`: **cada cambio de
 estado o de responsable deja una fila** con la duración de la fase que termina.
 No se recalcula recorriendo historial — la duración se guarda en el momento del
 cambio, así que las métricas salen de un `AVG` directo.
 
-De ahí salen cuatro medidas:
-
-| Medida | De dónde sale |
+| Gráfico | De dónde sale |
 |---|---|
-| Tiempo promedio de resolución | `created_at` → `completada_en` de las tareas cerradas |
-| Más rápida y más lenta | mínimo y máximo de lo mismo |
 | Tiempo promedio por fase | promedio de `duracion_segundos` agrupado por `estado_desde` |
-| Traspasos por tarea | cuántas veces cambió de responsable |
-| Tiempo retenido por persona | suma de `duracion_segundos` por `responsable_desde_id` |
+| Tiempo retenido por responsable | suma de `duracion_segundos` por `responsable_desde_id` |
 
 El detalle de cada tarea muestra la línea de tiempo completa: qué fase, cuánto
 duró, de quién a quién pasó, cuándo y quién registró el cambio. Es lo que
@@ -405,6 +428,7 @@ public/              pantallas (HTML + JS sin framework)
   app.css            tokens de color, claro y oscuro
   app.js             sesión, permisos, cliente SSE, barra lateral y utilidades
   Login · Reportes · Riesgos · Tareas · Matriz · Calendario · Usuarios · Cargos · Auditoria
+  Tarea.html         carga/edición de una tarea como informe (hallazgos, plan de acción)
 db/migracion-*.sql   cambios de esquema posteriores, aplicados en orden por init-db
 pruebas/             pruebas de API y de actualización en vivo
 ```
@@ -415,15 +439,21 @@ Con el servidor levantado (`npm start`) y en otra terminal:
 
 ```bash
 node pruebas/prueba-riesgos.js       # fichas, "+ info", edición por cargo
-node pruebas/prueba-historial.js     # Historial, los tres tipos y lo reservado
+node pruebas/prueba-historial.js     # Historial, tipos de tarea y casos reservados
+node pruebas/prueba-informe.js       # informe: hallazgos, plan de acción, edición
 node pruebas/prueba-calendario.js    # agenda, fases y métricas de tiempo
-node pruebas/prueba-ui-historial.js  # en navegador: paneles y formulario
+node pruebas/prueba-ui-historial.js  # en navegador: Historial y pantalla de la tarea
 node pruebas/dos-usuarios.js         # dos navegadores: actualización en vivo
 node pruebas/corte.js                # reconexión después de reiniciar el servidor
 ```
 
-Las tres últimas necesitan Playwright (`npm i -D playwright`). Se limpian
-solas: el riesgo y las tareas que crean se borran al terminar.
+Las pruebas de API (`prueba-riesgos`, `prueba-historial`, `prueba-informe`,
+`prueba-calendario`) necesitan además de `admin` un usuario `analista`
+(cargo Analista) y, para el calendario, un segundo usuario; créelos con
+`npm run crear-admin` o un alta desde **Usuarios**. Las de navegador
+(`prueba-ui-historial`, `dos-usuarios`, `corte`) necesitan Playwright
+(`npm i -D playwright`). Todas se limpian solas: el riesgo y las tareas que
+crean se borran al terminar.
 
 ## Pendiente de definir con el oficial de cumplimiento
 

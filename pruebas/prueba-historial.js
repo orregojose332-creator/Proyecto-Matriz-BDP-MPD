@@ -53,7 +53,7 @@ const GRUPOS = {
     fecha_programada: HOY, prioridad: 'Media', riesgo_id: riesgo, ...cuerpo } });
 
   const ids = {};
-  for (const [clave, tipo] of [['aud', 'Auditoria'], ['ctl', 'Control programado']]) {
+  for (const [clave, tipo] of [['prog', 'Tarea programada'], ['ext', 'Control extraordinario']]) {
     r = await crear({ titulo: `${tipo} sobre HIST-${sello}`, tipo });
     ok(r.estado === 201, `se crea una tarea de tipo "${tipo}"`);
     ids[clave] = r.datos.id;
@@ -61,7 +61,7 @@ const GRUPOS = {
 
   r = await crear({ titulo: 'Tipo inventado', tipo: 'Cualquier cosa' });
   const inventada = (await llamar(`/tareas/${r.datos.id}`, { token: admin })).datos;
-  ok(inventada.tipo === 'Auditoria', `un tipo desconocido cae en Auditoria (${inventada.tipo})`);
+  ok(inventada.tipo === 'Tarea programada', `un tipo desconocido cae en el default (${inventada.tipo})`);
 
   console.log('\n--- CASOS ESPECIALES ---');
   r = await crear({ titulo: 'Caso sin clasificar', tipo: 'Especial' });
@@ -102,8 +102,8 @@ const GRUPOS = {
   ok(r.estado === 200, 'y sigue viendo el que registro el mismo');
 
   console.log('\n--- EL HISTORIAL AGRUPA POR ESTADO ---');
-  await llamar(`/tareas/${ids.aud}/avanzar`, { metodo: 'POST', token: admin, cuerpo: { estado: 'En proceso' } });
-  await llamar(`/tareas/${ids.ctl}/avanzar`, { metodo: 'POST', token: admin, cuerpo: { estado: 'Completada' } });
+  await llamar(`/tareas/${ids.prog}/avanzar`, { metodo: 'POST', token: admin, cuerpo: { estado: 'En proceso' } });
+  await llamar(`/tareas/${ids.ext}/avanzar`, { metodo: 'POST', token: admin, cuerpo: { estado: 'Completada' } });
   await llamar(`/tareas/${abierta.datos.id}/avanzar`, { metodo: 'POST', token: admin, cuerpo: { estado: 'Cancelada' } });
 
   const todas = (await llamar(`/tareas?riesgo=${riesgo}`, { token: admin })).datos;
@@ -120,19 +120,19 @@ const GRUPOS = {
   ok(r.datos.length === 1, 'y se puede pedir un solo estado');
 
   console.log('\n--- EL FILTRO POR TIPO ---');
-  r = await llamar(`/tareas?riesgo=${riesgo}&tipo=Control programado`, { token: admin });
-  ok(r.datos.length === 1 && r.datos[0].tipo === 'Control programado',
-     'filtrar por "Control programado" devuelve solo ese');
+  r = await llamar(`/tareas?riesgo=${riesgo}&tipo=Control extraordinario`, { token: admin });
+  ok(r.datos.length === 1 && r.datos[0].tipo === 'Control extraordinario',
+     'filtrar por "Control extraordinario" devuelve solo ese');
   r = await llamar(`/tareas?riesgo=${riesgo}&tipo=Especial`, { token: analista });
   ok(!r.datos.some(t => t.id === ids.esp),
      'filtrar por Especial tampoco destapa la denuncia al Analista');
 
   console.log('\n--- EDITAR MANTIENE EL TIPO ---');
-  r = await llamar(`/tareas/${ids.ctl}`, { metodo: 'PUT', token: admin, cuerpo: {
-    titulo: 'Control programado, titulo corregido', fecha_programada: HOY, prioridad: 'Alta' } });
+  r = await llamar(`/tareas/${ids.ext}`, { metodo: 'PUT', token: admin, cuerpo: {
+    titulo: 'Control extraordinario, titulo corregido', fecha_programada: HOY, prioridad: 'Alta' } });
   ok(r.estado === 200, 'edicion sin mandar el tipo -> 200');
-  const tras = (await llamar(`/tareas/${ids.ctl}`, { token: admin })).datos;
-  ok(tras.tipo === 'Control programado', `el tipo no se pierde al editar (${tras.tipo})`);
+  const tras = (await llamar(`/tareas/${ids.ext}`, { token: admin })).datos;
+  ok(tras.tipo === 'Control extraordinario', `el tipo no se pierde al editar (${tras.tipo})`);
   r = await llamar(`/tareas/${ids.esp}`, { metodo: 'PUT', token: admin, cuerpo: {
     titulo: 'Denuncia, titulo corregido', tipo: 'Especial', fecha_programada: HOY } });
   ok(r.estado === 200 &&

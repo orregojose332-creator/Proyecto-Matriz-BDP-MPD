@@ -49,8 +49,6 @@
   <p class="sub">Lo agendado, lo vencido y cuánto tarda cada fase del trabajo.</p>
   <div id="aviso" class="aviso error" hidden></div>
 
-  <section class="rejilla kpis" id="kpis"></section>
-
   <div class="rejilla" style="grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">
     <div class="tarjeta" style="grid-column:1/-1">
       <div class="acciones" style="margin-bottom:14px">
@@ -97,11 +95,11 @@
         <div class="campo"><label for="t-titulo">Título</label><input id="t-titulo" required maxlength="200"></div>
         <div class="campo"><label for="t-tipo">Tipo</label>
           <select id="t-tipo">
-            <option value="Auditoria">Auditoría</option>
-            <option value="Control programado">Control programado</option>
+            <option value="Tarea programada">Tarea programada</option>
+            <option value="Control extraordinario">Control extraordinario</option>
           </select>
-          <small style="font-size:11.5px;color:var(--ink-muted)">Los casos especiales
-            (hurto, acoso, denuncias) se abren desde el riesgo, no se agendan.</small></div>
+          <small style="font-size:11.5px;color:var(--ink-muted)">Para cargar un informe
+            completo (hallazgos, recomendaciones, plan de acción) use «+ Tarea» desde el riesgo.</small></div>
         <div class="campo"><label for="t-prioridad">Prioridad</label>
           <select id="t-prioridad"><option>Baja</option><option selected>Media</option><option>Alta</option></select></div>
       </div>
@@ -172,26 +170,6 @@
     `<option value="${r.id}">${ui.esc(r.codigo)} — ${ui.esc(r.descripcion.slice(0,50))}</option>`).join('');
 
   // ─── KPIs ────────────────────────────────────────────────────────────────
-  function pintarKpis() {
-    if (!metricas) return;
-    const { resolucion, traspasos, agenda } = metricas;
-    const t = (et, val, nota) => `<div class="tarjeta kpi"><div class="etiqueta">${et}</div>
-      <div class="valor">${val}</div><div class="nota">${nota}</div></div>`;
-    document.getElementById('kpis').innerHTML =
-      t('Tiempo promedio de resolución',
-        resolucion.completadas ? duracion(resolucion.promedio_seg) : '—',
-        resolucion.completadas ? `sobre ${resolucion.completadas} tarea(s) completada(s)` : 'sin tareas completadas aún') +
-      t('Más rápida / más lenta',
-        resolucion.completadas
-          ? `<span style="font-size:22px">${duracion(resolucion.minimo_seg)} · ${duracion(resolucion.maximo_seg)}</span>`
-          : '—',
-        'mejor y peor caso registrados') +
-      t('Traspasos por tarea', ui.num(traspasos.promedio_por_tarea, 1),
-        `máximo observado: ${ui.num(traspasos.maximo)}`) +
-      t('Vencidas', ui.num(agenda.vencidas || 0),
-        `${ui.num(agenda.abiertas || 0)} abiertas · ${ui.num(agenda.completadas || 0)} completadas`);
-  }
-
   // ─── Gráfico: duración por fase ──────────────────────────────────────────
   function graficoFases() {
     const filas = ESTADOS
@@ -452,9 +430,8 @@
       tareas = await api(`/tareas?${q}`);
       if (puede('tareas.metricas')) {
         metricas = await api('/tareas/metricas');
-        pintarKpis(); graficoFases(); graficoResponsables();
+        graficoFases(); graficoResponsables();
       } else {
-        document.getElementById('kpis').innerHTML = '';
         for (const id of ['g-fases', 'g-resp'])
           document.getElementById(id).closest('.tarjeta').hidden = true;
       }
