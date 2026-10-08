@@ -139,13 +139,39 @@ const MDP = (() => {
 
     nivel(n) { return `<span class="nivel" data-n="${ui.esc(n)}">${ui.esc(n)}</span>`; },
 
+    /** Notificacion flotante arriba a la derecha. Reemplaza al cartel fijo:
+     *  los 'ok' se van solos en unos segundos, los errores quedan hasta que
+     *  se toquen o pase mas tiempo, y varios avisos se apilan sin pisarse. */
     aviso(texto, tipo = 'error') {
-      const caja = document.getElementById('aviso');
-      if (!caja) return alert(texto);
-      caja.className = `aviso ${tipo}`;
-      caja.textContent = texto;
-      caja.hidden = false;
-      if (tipo === 'ok') setTimeout(() => { caja.hidden = true; }, 3500);
+      // Si la pantalla esta dentro de un modal (iframe), el aviso se muestra
+      // en la ventana de arriba, no encerrado en el modal.
+      try {
+        if (window.parent && window.parent !== window && window.parent.MDP) {
+          return window.parent.MDP.ui.aviso(texto, tipo);
+        }
+      } catch { /* origen distinto: cae al aviso local */ }
+
+      let caja = document.querySelector('.avisos');
+      if (!caja) {
+        caja = Object.assign(document.createElement('div'), { className: 'avisos' });
+        caja.setAttribute('role', 'status');
+        caja.setAttribute('aria-live', 'polite');
+        document.body.appendChild(caja);
+      }
+      const t = Object.assign(document.createElement('div'), { className: `toast ${tipo}` });
+      t.innerHTML = `<span class="icono" aria-hidden="true">${tipo === 'ok' ? '✓' : '!'}</span>
+        <span class="txt"></span>`;
+      t.querySelector('.txt').textContent = texto;
+      caja.appendChild(t);
+      // Fuerza un reflow para que la transicion de entrada se vea.
+      requestAnimationFrame(() => t.classList.add('visible'));
+      const quitar = () => {
+        t.classList.remove('visible');
+        t.addEventListener('transitionend', () => t.remove(), { once: true });
+        setTimeout(() => t.remove(), 400);   // red de seguridad
+      };
+      t.onclick = quitar;                      // se puede descartar al tocar
+      setTimeout(quitar, tipo === 'ok' ? 3500 : 6000);
     },
 
     /** Tooltip unico y compartido por todos los graficos. */
@@ -293,13 +319,16 @@ const MDP = (() => {
 
   /** Arranca la pagina: valida sesion, dibuja la barra y abre el flujo en vivo.
    *  Devuelve el usuario ya verificado contra el servidor. */
-  async function iniciar({ permiso } = {}) {
+  async function iniciar({ permiso, modal = false } = {}) {
     if (!token()) return salir(), new Promise(() => {});
     try { usuario = await api('/auth/me'); }
     catch { return salir('expirada'), new Promise(() => {}); }
 
     localStorage.setItem('mdp_usuario', JSON.stringify(usuario));
-    barra();
+    // En modo modal la pantalla se muestra dentro de otra (iframe): no lleva
+    // barra ni barra lateral propias, ni abre su propio flujo en vivo.
+    if (modal) document.documentElement.classList.add('en-modal');
+    else barra();
 
     if (permiso && !puede(permiso)) {
       document.querySelector('main').innerHTML =
@@ -307,9 +336,40 @@ const MDP = (() => {
          no tiene acceso a esta pantalla.</div>`;
       return null;
     }
-    vivo.conectar();
+    if (!modal) vivo.conectar();
     return usuario;
   }
 
-  return { api, iniciar, puede, vivo, ui, salir, get usuario() { return usuario; } };
+  /** Abre una pantalla (Tarea.html) como ventana superpuesta sobre la actual.
+   *  `params` es la query (p. ej. 'riesgo=3' o 'id=12'); `alCerrar` recibe el
+   *  resultado que la pantalla de adentro informa al guardar o cancelar. */
+  function modalTarea(params, alCerrar) {
+    const velo = Object.assign(document.createElement('div'), { className: 'modal-velo' });
+    velo.innerHTML = `
+      <div class="modal-caja" role="dialog" aria-modal="true">
+        <button class="modal-x" aria-label="Cerrar">&times;</button>
+        <iframe class="modal-frame" title="Tarea" src="Tarea.html?${params}&modal=1"></iframe>
+      </div>`;
+    document.body.appendChild(velo);
+    document.documentElement.style.overflow = 'hidden';
+    let cerrado = false;
+    const cerrar = resultado => {
+      if (cerrado) return; cerrado = true;
+      window.removeEventListener('message', onMsg);
+      document.removeEventListener('keydown', onEsc);
+      document.documentElement.style.overflow = '';
+      velo.remove();
+      if (alCerrar) alCerrar(resultado || { accion: 'cancelada' });
+    };
+    const onMsg = e => { if (e.data && e.data.mdpTarea) cerrar(e.data.mdpTarea); };
+    const onEsc = e => { if (e.key === 'Escape') cerrar(); };
+    window.addEventListener('message', onMsg);
+    document.addEventListener('keydown', onEsc);
+    velo.addEventListener('click', e => { if (e.target === velo) cerrar(); });
+    velo.querySelector('.modal-x').onclick = () => cerrar();
+    requestAnimationFrame(() => velo.classList.add('visible'));
+    return cerrar;
+  }
+
+  return { api, iniciar, modalTarea, puede, vivo, ui, salir, get usuario() { return usuario; } };
 })();

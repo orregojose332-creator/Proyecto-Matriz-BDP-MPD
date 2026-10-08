@@ -135,7 +135,7 @@
       ${abierta && d ? panelFases(d) : ''}
       <div class="pie">
         <button class="accion" data-fases="${t.id}">${abierta ? '− Menos' : '+ Info'}</button>
-        <a class="accion" href="Tarea.html?id=${t.id}">Abrir informe</a>
+        <a class="accion" href="Tarea.html?id=${t.id}" data-informe="${t.id}">Abrir informe</a>
         ${puede('tareas.avanzar') && !['Completada','Cancelada'].includes(t.estado)
           ? `<button class="accion primario" data-avanzar="${t.id}">Cambiar estado</button>` : ''}
       </div>
@@ -195,6 +195,15 @@
   }
 
   document.getElementById('grupos').addEventListener('click', async e => {
+    // "Abrir informe" abre la tarea en un modal sobre esta pantalla.
+    const enlace = e.target.closest('a[data-informe]');
+    if (enlace) {
+      e.preventDefault();
+      const id = Number(enlace.dataset.informe);
+      return MDP.modalTarea(`id=${id}`, async res => {
+        if (res.accion === 'editada') { ui.aviso('Tarea actualizada correctamente', 'ok'); delete detalles[id]; await cargar(); }
+      });
+    }
     const b = e.target.closest('button[data-fases],button[data-avanzar]');
     if (!b) return;
     const id = Number(b.dataset.fases || b.dataset.avanzar);

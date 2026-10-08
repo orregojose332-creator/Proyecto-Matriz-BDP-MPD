@@ -97,14 +97,25 @@
 <script>
 'use strict';
 (async () => {
-  const u = await MDP.iniciar({ permiso: 'tareas.ver' });
+  const par = new URLSearchParams(location.search);
+  // Dentro de un modal (iframe) la pantalla no lleva barra ni lateral propias,
+  // y en vez de navegar le avisa a la ventana de fondo que termino.
+  const esModal = par.get('modal') === '1';
+  const u = await MDP.iniciar({ permiso: 'tareas.ver', modal: esModal });
   if (!u) return;
   const { ui, api, puede } = MDP;
 
-  const par = new URLSearchParams(location.search);
   const idTarea  = par.get('id')     ? Number(par.get('id'))     : null;
   const idRiesgo = par.get('riesgo') ? Number(par.get('riesgo')) : null;
   const G = id => document.getElementById(id);
+
+  /** Cierra la pantalla: si es un modal avisa al padre; si no, navega. */
+  function salirPantalla(accion) {
+    if (esModal) { parent.postMessage({ mdpTarea: { accion } }, '*'); return; }
+    location.href = G('volver').href;
+  }
+  // En modal el enlace "Volver" sobra: lo cierra el padre con la X o Escape.
+  if (esModal) G('volver').hidden = true;
 
   // Quién puede qué: crear una tarea nueva exige tareas.crear; editar una
   // existente exige tareas.editar. Sin el permiso, la pantalla es de lectura.
@@ -235,7 +246,7 @@
   }
 
   // ─── Guardar ───────────────────────────────────────────────────────────────
-  G('btn-cancelar').onclick = () => { location.href = G('volver').href; };
+  G('btn-cancelar').onclick = () => salirPantalla('cancelada');
 
   G('form').addEventListener('submit', async e => {
     e.preventDefault();
@@ -263,8 +274,11 @@
     try {
       if (idTarea) await api(`/tareas/${idTarea}`, { method: 'PUT', cuerpo });
       else         await api('/tareas', { method: 'POST', cuerpo });
-      // Vuelve al riesgo (o a Tareas) donde la tarea ya aparece en el historial.
-      location.href = G('volver').href;
+      // En modal: cierra y deja que la ventana de fondo muestre el aviso. Como
+      // pantalla suelta: avisa acá mismo y vuelve al riesgo o a Tareas.
+      if (esModal) return salirPantalla(idTarea ? 'editada' : 'creada');
+      ui.aviso(idTarea ? 'Tarea actualizada correctamente' : 'Tarea creada correctamente', 'ok');
+      setTimeout(() => { location.href = G('volver').href; }, 600);
     } catch (err) {
       ui.aviso(err.message);
       G('btn-guardar').disabled = false;

@@ -237,3 +237,64 @@ svg text { font-family: var(--sans); }
   table { font-size: 12px; }
   th, td { padding: 7px 6px; }
 }
+
+/* ─── Notificaciones flotantes (toasts) ─────────────────────────────────── */
+.avisos {
+  position: fixed; right: 12px; z-index: 90;
+  /* Justo debajo de la barra superior (su alto lo mide el script); en un modal,
+     que no tiene barra, cae cerca del borde. */
+  top: calc(var(--alto-barra, 57px) + 10px + env(safe-area-inset-top, 0px));
+  display: flex; flex-direction: column; gap: 10px;
+  max-width: min(360px, calc(100vw - 24px)); pointer-events: none;
+}
+:root.en-modal .avisos { top: calc(12px + env(safe-area-inset-top, 0px)); }
+.toast {
+  pointer-events: auto; cursor: pointer; display: flex; align-items: flex-start; gap: 10px;
+  background: var(--surface-1); border: 1px solid var(--borde);
+  border-left: 4px solid var(--axis); border-radius: 10px; padding: 11px 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.18); font-size: 13.5px; line-height: 1.4;
+  opacity: 0; transform: translateX(16px); transition: opacity .18s ease, transform .18s ease;
+}
+.toast.visible { opacity: 1; transform: none; }
+.toast.ok    { border-left-color: var(--nivel-bajo); }
+.toast.error { border-left-color: var(--nivel-critico); }
+.toast .icono {
+  flex: none; width: 18px; height: 18px; border-radius: 50%; color: #fff;
+  font-size: 12px; font-weight: 700; display: grid; place-items: center; margin-top: 1px;
+}
+.toast.ok    .icono { background: var(--nivel-bajo); }
+.toast.error .icono { background: var(--nivel-critico); }
+.toast .txt { flex: 1; min-width: 0; color: var(--ink-1); }
+@media (prefers-reduced-motion: reduce) {
+  .toast { transition: none; transform: none; }
+}
+
+/* ─── Ventana superpuesta (modal con iframe) ────────────────────────────── */
+.modal-velo {
+  position: fixed; inset: 0; z-index: 80; display: grid; place-items: center;
+  padding: 16px; background: rgba(0,0,0,.45);
+  opacity: 0; transition: opacity .18s ease;
+}
+.modal-velo.visible { opacity: 1; }
+.modal-caja {
+  position: relative; width: min(880px, 100%); height: min(92vh, 100%);
+  background: var(--surface-1); border-radius: 14px; overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0,0,0,.4); display: flex; flex-direction: column;
+}
+.modal-frame { flex: 1; width: 100%; border: 0; display: block; }
+.modal-x {
+  position: absolute; top: 8px; right: 10px; z-index: 2;
+  width: 34px; height: 34px; padding: 0; border-radius: 9px; font-size: 22px; line-height: 1;
+  background: var(--surface-1); border: 1px solid var(--borde); color: var(--ink-2); cursor: pointer;
+}
+.modal-x:hover { background: var(--plane); color: var(--ink-1); }
+@media (prefers-reduced-motion: reduce) { .modal-velo { transition: none; } }
+@media (max-width: 640px) {
+  .modal-velo { padding: 0; }
+  .modal-caja { width: 100%; height: 100%; border-radius: 0; }
+}
+
+/* Cuando una pantalla se muestra DENTRO de un modal (iframe), no lleva la
+   barra superior ni la lateral; el <main> ocupa todo el ancho. */
+:root.en-modal main { max-width: none; margin: 0; padding: 18px; }
+:root.en-modal header.barra, :root.en-modal .lateral, :root.en-modal .velo { display: none; }

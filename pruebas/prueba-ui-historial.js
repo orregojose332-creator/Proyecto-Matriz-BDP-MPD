@@ -45,58 +45,67 @@ const entrar = async (nav, usuario, clave, ancho = 1280) => {
   await p.waitForSelector('.ficha .cifras', { timeout: 10000 });
   ok(await ficha.locator('.info').count() === 2, 'los dos paneles conviven abiertos');
 
-  console.log('\n--- "+ TAREA" ABRE LA PANTALLA DEL INFORME ---');
+  console.log('\n--- "+ TAREA" ABRE UN MODAL CON EL INFORME ---');
+  const idRiesgo = Number(await ficha.getAttribute('data-id'));
   await ficha.locator('button[data-tarea]').click();
-  await p.waitForURL('**/Tarea.html?riesgo=*', { timeout: 10000 });
-  await p.waitForSelector('#f-titulo');
-  const idRiesgo = Number(new URL(p.url()).searchParams.get('riesgo'));
-  ok(p.url().includes('Tarea.html?riesgo='), '+ Tarea navega a la pantalla nueva');
-  ok((await p.inputValue('#f-titulo')).length > 0, 'el titulo viene precargado desde el riesgo');
+  await p.waitForSelector('.modal-velo.visible', { timeout: 10000 });
+  const fr = p.frameLocator('.modal-frame');
+  await fr.locator('#f-titulo').waitFor({ timeout: 10000 });
+  ok(await p.locator('.modal-velo').count() === 1, '+ Tarea abre un modal superpuesto');
+  ok((await fr.locator('#f-titulo').inputValue()).length > 0, 'el titulo viene precargado desde el riesgo');
 
-  const tipos = await p.locator('#f-tipo option').allTextContents();
+  const tipos = await fr.locator('#f-tipo option').allTextContents();
   ok(tipos.join('/') === 'Tarea programada/Control extraordinario',
      `los dos tipos nuevos estan en el selector: ${tipos.join(' / ')}`);
 
-  // El informe: cabecera + un hallazgo con su cadena completa.
-  ok(await p.locator('.hallazgo').count() === 1, 'arranca con un hallazgo en blanco');
+  ok(await fr.locator('.hallazgo').count() === 1, 'arranca con un hallazgo en blanco');
   const titulo = 'Informe de prueba UI ' + Date.now().toString().slice(-6);
-  await p.fill('#f-titulo', titulo);
-  await p.selectOption('#f-tipo', 'Control extraordinario');
-  await p.fill('#f-area', 'Caja - Sucursal Centro');
-  await p.fill('#f-antec', 'Observacion previa de faltantes');
-  await p.fill('.hallazgo [data-h="hallazgo"]', 'Arqueos sin doble firma');
-  await p.fill('.hallazgo [data-h="riesgo"]', 'Faltantes no detectados a tiempo');
-  await p.fill('.hallazgo [data-h="recomendacion"]', 'Implementar doble firma diaria');
-  await p.fill('.hallazgo [data-h="plan_accion"]', 'Se instruye doble firma desde noviembre');
-  await p.fill('.hallazgo [data-h="area_responsable"]', 'Tesoreria');
+  await fr.locator('#f-titulo').fill(titulo);
+  await fr.locator('#f-tipo').selectOption('Control extraordinario');
+  await fr.locator('#f-area').fill('Caja - Sucursal Centro');
+  await fr.locator('#f-antec').fill('Observacion previa de faltantes');
+  await fr.locator('.hallazgo [data-h="hallazgo"]').fill('Arqueos sin doble firma');
+  await fr.locator('.hallazgo [data-h="riesgo"]').fill('Faltantes no detectados a tiempo');
+  await fr.locator('.hallazgo [data-h="recomendacion"]').fill('Implementar doble firma diaria');
+  await fr.locator('.hallazgo [data-h="plan_accion"]').fill('Se instruye doble firma desde noviembre');
+  await fr.locator('.hallazgo [data-h="area_responsable"]').fill('Tesoreria');
 
-  await p.click('#btn-hallazgo');
-  ok(await p.locator('.hallazgo').count() === 2, '"+ Agregar hallazgo" suma otra ficha');
-  await p.fill('.hallazgo:nth-child(2) [data-h="hallazgo"]', 'Camaras sin retencion de 90 dias');
+  await fr.locator('#btn-hallazgo').click();
+  ok(await fr.locator('.hallazgo').count() === 2, '"+ Agregar hallazgo" suma otra ficha');
+  await fr.locator('.hallazgo:nth-child(2) [data-h="hallazgo"]').fill('Camaras sin retencion de 90 dias');
 
-  console.log('\n--- GUARDAR Y VER EN EL HISTORIAL ---');
-  await p.click('#btn-guardar');
-  await p.waitForURL('**/Riesgos.html', { timeout: 10000 });
-  ok(true, 'al guardar vuelve a Riesgos');
+  console.log('\n--- GUARDAR CIERRA EL MODAL Y NOTIFICA ---');
+  await fr.locator('#btn-guardar').click();
+  await p.waitForSelector('.modal-velo', { state: 'detached', timeout: 10000 });
+  ok(true, 'al guardar, el modal se cierra solo');
+  await p.waitForSelector('.toast.ok', { timeout: 6000 });
+  ok(/creada correctamente/i.test(await p.locator('.toast.ok .txt').first().textContent()),
+     'aparece el toast "Tarea creada correctamente" arriba a la derecha');
 
-  const fr = p.locator(`.ficha[data-id="${idRiesgo}"]`);
-  await fr.locator('button[data-historial]').click();
-  await p.waitForSelector('.hist-item', { timeout: 10000 });
-  const item = fr.locator('.hist-item', { hasText: titulo });
+  const frR = p.locator(`.ficha[data-id="${idRiesgo}"]`);
+  await p.waitForSelector(`.ficha[data-id="${idRiesgo}"] .hist-item`, { timeout: 8000 });
+  const item = frR.locator('.hist-item', { hasText: titulo });
   ok(await item.count() === 1, 'la tarea aparece en el historial del riesgo');
   // El conteo de hallazgos se muestra (text-transform lo pone en mayuscula).
   ok(/2 HALLAZGO/i.test(await item.innerText()), 'muestra "2 hallazgo(s)"');
   ok(/CONTROL EXTRAORDINARIO/i.test(await item.innerText()), 'y el tipo elegido');
 
-  console.log('\n--- ABRIR EL INFORME GUARDADO ---');
+  console.log('\n--- ABRIR EL INFORME EN EL MODAL ---');
   await item.locator('a.hist-titulo').click();
-  await p.waitForURL('**/Tarea.html?id=*', { timeout: 10000 });
-  await p.waitForSelector('.hallazgo');
-  ok(await p.locator('.hallazgo').count() === 2, 'la tarea abre con sus 2 hallazgos');
-  ok(await p.inputValue('#f-area') === 'Caja - Sucursal Centro', 'el area auditada se guardo');
-  ok(await p.locator('.hallazgo').first().locator('[data-h="area_responsable"]').inputValue() === 'Tesoreria',
+  await p.waitForSelector('.modal-velo.visible', { timeout: 10000 });
+  const fr2 = p.frameLocator('.modal-frame');
+  await fr2.locator('.hallazgo').first().waitFor();
+  ok(await fr2.locator('.hallazgo').count() === 2, 'el modal abre la tarea con sus 2 hallazgos');
+  ok(await fr2.locator('#f-area').inputValue() === 'Caja - Sucursal Centro', 'el area auditada se guardo');
+  ok(await fr2.locator('.hallazgo').first().locator('[data-h="area_responsable"]').inputValue() === 'Tesoreria',
      'el area responsable del hallazgo se guardo');
-  const idTarea = Number(new URL(p.url()).searchParams.get('id'));
+  await p.locator('.modal-x').click();
+  await p.waitForSelector('.modal-velo', { state: 'detached', timeout: 6000 });
+  const idTarea = await p.evaluate(async t => {
+    const cab = { Authorization: 'Bearer ' + localStorage.getItem('mdp_token') };
+    const todas = await (await fetch('/api/tareas', { headers: cab })).json();
+    return (todas.find(x => x.titulo === t) || {}).id;
+  }, titulo);
 
   console.log('\n--- EN UN TELEFONO (390px) ---');
   const chico = await entrar(nav, 'admin', 'ClaveDePrueba123', 390);

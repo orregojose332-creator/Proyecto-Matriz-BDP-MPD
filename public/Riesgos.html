@@ -290,7 +290,7 @@ a.hist-titulo:hover { text-decoration: underline; }
     return `<li class="hist-item">
       <div class="hist-fila">
         <span class="codigo">${ui.esc(t.codigo)}</span>
-        <a class="hist-titulo" href="Tarea.html?id=${t.id}">${ui.esc(t.titulo)}</a>
+        <a class="hist-titulo" href="Tarea.html?id=${t.id}" data-tarea="${t.id}">${ui.esc(t.titulo)}</a>
         <span class="etiqueta">${ui.esc(t.tipo)}${
           t.categoria_especial ? ' · ' + ui.esc(t.categoria_especial) : ''}</span>
         ${Number(t.confidencial) ? '<span class="etiqueta reservado">Reservado</span>' : ''}
@@ -347,6 +347,10 @@ a.hist-titulo:hover { text-decoration: underline; }
 
   // ─── Acciones ────────────────────────────────────────────────────────────
   document.getElementById('fichas').addEventListener('click', async e => {
+    // El título de una tarea en el historial abre su informe en un modal.
+    const enlace = e.target.closest('a.hist-titulo');
+    if (enlace) { e.preventDefault(); return verTarea(Number(enlace.dataset.tarea)); }
+
     const b = e.target.closest('button[data-info],button[data-historial],button[data-editar],button[data-tarea],button[data-aprobar]');
     if (!b) return;
     const id = Number(b.dataset.info || b.dataset.historial || b.dataset.editar
@@ -437,7 +441,20 @@ a.hist-titulo:hover { text-decoration: underline; }
   // antecedentes, hallazgos, recomendaciones y plan de acción). Desde acá solo
   // se abre esa pantalla, ya apuntada al riesgo.
   function nuevaTarea(idRiesgo) {
-    location.href = `Tarea.html?riesgo=${idRiesgo}`;
+    MDP.modalTarea(`riesgo=${idRiesgo}`, async res => {
+      if (res.accion !== 'creada') return;
+      ui.aviso('Tarea creada correctamente', 'ok');
+      if (puede('tareas.ver')) historiales.add(idRiesgo);   // se ve en el acto
+      await cargar();
+    });
+  }
+
+  // Abre el informe de una tarea existente en el modal (ver o editar).
+  function verTarea(idTarea) {
+    MDP.modalTarea(`id=${idTarea}`, async res => {
+      if (res.accion === 'editada') ui.aviso('Tarea actualizada correctamente', 'ok');
+      if (res.accion === 'editada') await cargar();
+    });
   }
 
   /** Todas las tareas del riesgo, en cualquier estado. El servidor ya quita

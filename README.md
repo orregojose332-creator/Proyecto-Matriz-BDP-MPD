@@ -247,14 +247,15 @@ según su nivel residual, las cifras del cálculo y tres acciones.
 - **Historial** lista las tareas de ese riesgo agrupadas en **sin iniciar, en
   proceso, completadas y canceladas**, con el total arriba. Exige `tareas.ver`.
 - **Editar** abre el formulario, y solo aparece con el permiso `riesgos.editar`.
-- **+ Tarea** abre la **pantalla de carga del informe** (`Tarea.html`) ya
-  apuntada a ese riesgo; exige `tareas.crear`. Lo ya creado se consulta en
-  Historial, no acá.
+- **+ Tarea** abre el informe de una tarea nueva en una **ventana superpuesta**
+  (un modal sobre la lista), ya apuntada a ese riesgo; exige `tareas.crear`. Al
+  guardar, el modal se cierra solo y aparece el aviso **«Tarea creada
+  correctamente»** arriba a la derecha. Lo ya creado se consulta en Historial.
 
 Los dos paneles (+ Info e Historial) son independientes: se pueden tener
 abiertos a la vez, y el Historial se vuelve a pedir solo cuando una tarea cambia
 de estado, así que una tarea salta de grupo sin tocar el botón. Cada tarea del
-Historial es un enlace que abre su informe completo.
+Historial es un enlace que abre su informe, también en el modal.
 
 ### La tarea es un informe de auditoría / control
 
@@ -293,6 +294,22 @@ bloque. Un hallazgo sin texto se descarta.
 > para los cargos con `tareas.confidencial`, su responsable y quien lo
 > registró— pero hoy no hay una pantalla para crear uno nuevo. Si el área lo
 > necesita, se reincorpora como una opción aparte.
+
+### La ventana superpuesta y las notificaciones
+
+El informe es la página `Tarea.html`. «+ Tarea» y «abrir informe» la muestran
+**dentro de un modal** (un `iframe`) sobre la pantalla de fondo, en vez de
+navegar; así la lista no se pierde y al cerrar se vuelve justo donde se estaba.
+La misma página sigue funcionando **suelta** (por su URL directa, útil para un
+enlace o como respaldo): en modo modal lleva `?modal=1` y, en vez de navegar,
+le avisa a la ventana de fondo que terminó.
+
+Los avisos del sistema son **notificaciones flotantes (toasts)** arriba a la
+derecha: los de éxito se van solos, los de error quedan hasta tocarlos, y varios
+se apilan. Salen de una sola función (`MDP.ui.aviso` en `app.js`), así que
+cualquier acción que avise —crear, editar, borrar, aprobar, cambiar de estado—
+usa el mismo formato en todas las pantallas. Dentro del modal, el aviso aparece
+igual en la ventana de fondo, no encerrado en el modal.
 
 La orientación y los casos típicos viven en el **subfactor**, no en el riesgo,
 porque describen la categoría y sirven para todos los riesgos que caen en ella.
@@ -425,7 +442,7 @@ db/seed.sql          permisos, cargos, factores, subfactores y escalas
 scripts/init-db.js   crea la base y aplica schema + seed
 scripts/crear-admin.js   alta del primer administrador
 public/              pantallas (HTML + JS sin framework)
-  app.css            tokens de color, claro y oscuro
+  app.css            tokens de color (claro y oscuro), toasts y modal
   app.js             sesión, permisos, cliente SSE, barra lateral y utilidades
   Login · Reportes · Riesgos · Tareas · Matriz · Calendario · Usuarios · Cargos · Auditoria
   Tarea.html         carga/edición de una tarea como informe (hallazgos, plan de acción)
@@ -442,7 +459,8 @@ node pruebas/prueba-riesgos.js       # fichas, "+ info", edición por cargo
 node pruebas/prueba-historial.js     # Historial, tipos de tarea y casos reservados
 node pruebas/prueba-informe.js       # informe: hallazgos, plan de acción, edición
 node pruebas/prueba-calendario.js    # agenda, fases y métricas de tiempo
-node pruebas/prueba-ui-historial.js  # en navegador: Historial y pantalla de la tarea
+node pruebas/prueba-ui-historial.js  # en navegador: Historial y el modal de la tarea
+node pruebas/prueba-notificaciones.js# en navegador: toasts al cambiar estado y borrar
 node pruebas/dos-usuarios.js         # dos navegadores: actualización en vivo
 node pruebas/corte.js                # reconexión después de reiniciar el servidor
 ```
