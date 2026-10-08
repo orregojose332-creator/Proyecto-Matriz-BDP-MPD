@@ -298,3 +298,14 @@ svg text { font-family: var(--sans); }
    barra superior ni la lateral; el <main> ocupa todo el ancho. */
 :root.en-modal main { max-width: none; margin: 0; padding: 18px; }
 :root.en-modal header.barra, :root.en-modal .lateral, :root.en-modal .velo { display: none; }
+
+/* ─── Paginador (listas largas de tareas / riesgos) ─────────────────────── */
+.paginador { display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  justify-content: center; margin-top: 16px; }
+.paginador button { font: inherit; font-size: 13px; font-weight: 500; min-width: 34px;
+  padding: 6px 10px; border-radius: 8px; border: 1px solid var(--borde);
+  background: var(--surface-1); color: var(--ink-2); cursor: pointer; }
+.paginador button:hover:not(:disabled) { background: var(--plane); color: var(--ink-1); }
+.paginador button[aria-current="page"] { background: var(--serie-1); border-color: var(--serie-1); color: #fff; }
+.paginador button:disabled { opacity: .4; cursor: not-allowed; }
+.paginador .rango { font-size: 12px; color: var(--ink-muted); margin-left: 6px; }

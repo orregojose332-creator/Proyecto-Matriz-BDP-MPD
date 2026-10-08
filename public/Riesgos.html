@@ -19,14 +19,15 @@
 /* No reutilizar la clase .cuerpo: en app.css es el contenedor en flex que
    sostiene la barra lateral, y su display se filtraba hasta acá dejando la
    insignia de nivel pegada a los datos del riesgo, en la misma línea. */
-.ficha-cuerpo { padding: 16px 18px; }
+.ficha-cuerpo { padding: 13px 16px; }
 .ficha .alto { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
-.ficha .codigo { font-weight: 700; font-size: 13px; color: var(--ink-2);
+.ficha .codigo { font-weight: 600; font-size: 12px; color: var(--ink-2);
                  font-variant-numeric: tabular-nums; white-space: nowrap; }
-.ficha h3 { margin: 2px 0 6px; font-size: 15px; font-weight: 600; line-height: 1.4;
+.ficha h3 { margin: 1px 0 4px; font-size: 13.5px; font-weight: 600; line-height: 1.35;
             flex: 1; min-width: 200px; }
-.ficha .meta { font-size: 12px; color: var(--ink-muted); display: flex;
-               gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+.ficha .meta { font-size: 11px; color: var(--ink-muted); display: flex;
+               gap: 6px 12px; flex-wrap: wrap; margin-top: 6px; line-height: 1.5; }
+.ficha .alto .nivel { font-size: 11px; font-weight: 500; padding: 1px 8px; }
 /* Las cifras viven dentro del panel «+ info», junto a la explicación de cómo
    se llegó a ellas; la ficha cerrada queda con el código, la descripción y el
    nivel, que es lo que se necesita para recorrer la lista. */
@@ -144,6 +145,7 @@ a.hist-titulo:hover { text-decoration: underline; }
   const { ui, api, puede } = MDP;
 
   let cat = null, lista = [], abiertos = new Set(), detalles = {};
+  let pag = 1; const POR_PAGINA = 8, UMBRAL_PAGINAR = 10;
   // Los paneles de historial abiertos y las tareas que ya trajimos de cada uno.
   const historiales = new Set(), historial = {};
 
@@ -189,7 +191,7 @@ a.hist-titulo:hover { text-decoration: underline; }
           <span>${ui.esc(r.factor_nombre)}${r.subfactor_nombre ? ' · ' + ui.esc(r.subfactor_nombre) : ''}</span>
           <span>Estado: ${ui.esc(r.estado)}</span>
           <span>Responsable: ${ui.esc(r.responsable_nombre || 'sin asignar')}</span>
-          ${Number(r.tareas_abiertas) ? `<span style="color:var(--nivel-alto);font-weight:600">${r.tareas_abiertas} tarea(s) abierta(s)</span>` : ''}
+          ${Number(r.tareas_abiertas) ? `<span style="color:var(--nivel-alto);font-weight:500">${r.tareas_abiertas} tarea(s) abierta(s)</span>` : ''}
         </div>
       </div>
       ${abierta ? `<div class="info">${d ? panelInfo(d) : '<p class="sin-dato">Cargando…</p>'}</div>` : ''}
@@ -338,15 +340,33 @@ a.hist-titulo:hover { text-decoration: underline; }
       }).join('')}`;
   }
 
+  function paginador(paginas, total) {
+    const b = (n, txt, dis, cur) =>
+      `<button data-pag="${n}"${dis ? ' disabled' : ''}${cur ? ' aria-current="page"' : ''}>${txt}</button>`;
+    let nums = '';
+    for (let i = 1; i <= paginas; i++) nums += b(i, i, false, i === pag);
+    return `<div class="paginador">${b(pag - 1, '‹', pag <= 1)}${nums}${b(pag + 1, '›', pag >= paginas)}
+      <span class="rango">${total} riesgo(s)</span></div>`;
+  }
+
   function pintar() {
     const caja = document.getElementById('fichas');
-    caja.innerHTML = lista.length
-      ? lista.map(ficha).join('')
-      : '<div class="tarjeta vacio">No hay riesgos que coincidan con el filtro.</div>';
+    if (!lista.length) {
+      caja.innerHTML = '<div class="tarjeta vacio">No hay riesgos que coincidan con el filtro.</div>';
+      return;
+    }
+    const paginar = lista.length > UMBRAL_PAGINAR;
+    const paginas = paginar ? Math.ceil(lista.length / POR_PAGINA) : 1;
+    pag = Math.min(Math.max(1, pag), paginas);
+    const enPagina = paginar ? lista.slice((pag - 1) * POR_PAGINA, pag * POR_PAGINA) : lista;
+    caja.innerHTML = enPagina.map(ficha).join('') + (paginar ? paginador(paginas, lista.length) : '');
   }
 
   // ─── Acciones ────────────────────────────────────────────────────────────
   document.getElementById('fichas').addEventListener('click', async e => {
+    const pb = e.target.closest('.paginador button[data-pag]');
+    if (pb) { pag = Number(pb.dataset.pag); pintar();
+              document.getElementById('fichas').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     // El título de una tarea en el historial abre su informe en un modal.
     const enlace = e.target.closest('a.hist-titulo');
     if (enlace) { e.preventDefault(); return verTarea(Number(enlace.dataset.tarea)); }
@@ -488,10 +508,10 @@ a.hist-titulo:hover { text-decoration: underline; }
   }
 
   for (const id of ['f-factor', 'f-nivel', 'f-estado'])
-    document.getElementById(id).onchange = cargar;
+    document.getElementById(id).onchange = () => { pag = 1; cargar(); };
   let reloj;
   document.getElementById('f-buscar').oninput = e => {
-    filtroTexto = e.target.value.trim();
+    filtroTexto = e.target.value.trim(); pag = 1;
     clearTimeout(reloj); reloj = setTimeout(cargar, 250);
   };
 

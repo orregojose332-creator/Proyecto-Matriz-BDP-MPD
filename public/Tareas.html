@@ -11,18 +11,21 @@
 .grupo .cuenta { font-size: 12px; font-weight: 600; color: var(--ink-2);
   background: var(--plane); border: 1px solid var(--borde); border-radius: 999px; padding: 1px 9px; }
 .item { background: var(--surface-1); border: 1px solid var(--borde);
-        border-left: 4px solid var(--axis); border-radius: var(--radio);
-        padding: 13px 16px; margin-bottom: 8px; }
+        border-left: 3px solid var(--axis); border-radius: var(--radio);
+        padding: 11px 14px; margin-bottom: 7px; }
 .item[data-e="Pendiente"]   { border-left-color: var(--nivel-moderado); }
 .item[data-e="En proceso"]  { border-left-color: var(--serie-1); }
 .item[data-e="En revision"] { border-left-color: var(--serie-2); }
 .item[data-e="Completada"]  { border-left-color: var(--nivel-bajo); }
 .item[data-e="Cancelada"]   { border-left-color: var(--ink-muted); opacity: .65; }
 .item.venc { border-left-color: var(--nivel-critico); }
-.item .alto { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
-.item h3 { margin: 0; font-size: 14.5px; font-weight: 600; flex: 1; min-width: 180px; }
-.item .meta { font-size: 12px; color: var(--ink-muted); display: flex; gap: 14px;
-              flex-wrap: wrap; margin-top: 7px; }
+.item .alto { display: flex; gap: 9px; align-items: baseline; flex-wrap: wrap; }
+.item h3 { margin: 0; font-size: 13px; font-weight: 600; flex: 1; min-width: 180px; }
+/* Insignia de estado más discreta dentro de la tarjeta (no la global). */
+.item .alto .nivel { font-size: 11px; font-weight: 500; padding: 1px 8px; }
+.item .meta { font-size: 11px; color: var(--ink-muted); display: flex; gap: 6px 12px;
+              flex-wrap: wrap; margin-top: 6px; line-height: 1.5; }
+.item .meta .reservado { color: var(--nivel-critico); font-weight: 500; }
 .item .pie { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 11px;
              padding-top: 10px; border-top: 1px solid var(--grid); }
 .linea { list-style: none; margin: 10px 0 0; padding: 0 0 0 20px; border-left: 2px solid var(--grid); }
@@ -91,6 +94,7 @@
   }
 
   let cat = null, lista = [], abiertas = new Set(), detalles = {};
+  let pag = 1; const POR_PAGINA = 8, UMBRAL_PAGINAR = 10;
   cat = await api('/catalogos');
   document.getElementById('f-estado').innerHTML += ESTADOS.map(e => `<option>${e}</option>`).join('');
   document.getElementById('f-resp').innerHTML +=
@@ -124,7 +128,7 @@
       <div class="meta">
         <span>${ui.esc(t.tipo)}${t.categoria_especial ? ' · ' + ui.esc(t.categoria_especial) : ''
           } · prioridad ${ui.esc(t.prioridad)}</span>
-        ${Number(t.confidencial) ? '<span style="color:var(--nivel-critico);font-weight:600">Reservado</span>' : ''}
+        ${Number(t.confidencial) ? '<span class="reservado">Reservado</span>' : ''}
         <span>Responsable: ${ui.esc(t.responsable_nombre || 'sin asignar')}</span>
         <span>Programada: ${ui.fecha(t.fecha_programada)}</span>
         ${t.fecha_limite ? `<span>Límite: ${ui.fecha(t.fecha_limite)}</span>` : ''}
@@ -179,22 +183,42 @@
         </form>` : ''}`;
   }
 
+  function paginador(paginas, total) {
+    const b = (n, txt, dis, cur) =>
+      `<button data-pag="${n}"${dis ? ' disabled' : ''}${cur ? ' aria-current="page"' : ''}>${txt}</button>`;
+    let nums = '';
+    for (let i = 1; i <= paginas; i++) nums += b(i, i, false, i === pag);
+    return `<div class="paginador">${b(pag - 1, '‹', pag <= 1)}${nums}${b(pag + 1, '›', pag >= paginas)}
+      <span class="rango">${total} tarea(s)</span></div>`;
+  }
+
   function pintar() {
     kpis();
     const caja = document.getElementById('grupos');
     if (!lista.length) return caja.innerHTML =
       '<div class="tarjeta vacio">No hay tareas que coincidan con el filtro.</div>';
-    caja.innerHTML = ESTADOS.map(e => {
-      const g = lista.filter(t => t.estado === e);
+    // Orden por estado (Pendiente, En proceso, …) y, sobre ese orden, la página.
+    const ordenada = ESTADOS.flatMap(e => lista.filter(t => t.estado === e));
+    const paginar = ordenada.length > UMBRAL_PAGINAR;
+    const paginas = paginar ? Math.ceil(ordenada.length / POR_PAGINA) : 1;
+    pag = Math.min(Math.max(1, pag), paginas);
+    const enPagina = paginar ? ordenada.slice((pag - 1) * POR_PAGINA, pag * POR_PAGINA) : ordenada;
+    const grupos = ESTADOS.map(e => {
+      const g = enPagina.filter(t => t.estado === e);
       if (!g.length) return '';
+      const total = lista.filter(t => t.estado === e).length;   // total real del estado
       return `<section class="grupo">
         <h2><span class="nivel" style="color:${COLOR[e]}">${e}</span>
-            <span class="cuenta">${g.length}</span></h2>
+            <span class="cuenta">${total}</span></h2>
         ${g.map(item).join('')}</section>`;
     }).join('');
+    caja.innerHTML = grupos + (paginar ? paginador(paginas, ordenada.length) : '');
   }
 
   document.getElementById('grupos').addEventListener('click', async e => {
+    const pb = e.target.closest('.paginador button[data-pag]');
+    if (pb) { pag = Number(pb.dataset.pag); pintar();
+              document.getElementById('grupos').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     // "Abrir informe" abre la tarea en un modal sobre esta pantalla.
     const enlace = e.target.closest('a[data-informe]');
     if (enlace) {
@@ -256,10 +280,10 @@
   }
 
   for (const id of ['f-estado', 'f-resp', 'f-tipo', 'f-venc'])
-    document.getElementById(id).onchange = cargar;
+    document.getElementById(id).onchange = () => { pag = 1; cargar(); };
   let reloj;
   document.getElementById('f-buscar').oninput = e => {
-    filtroTexto = e.target.value.trim();
+    filtroTexto = e.target.value.trim(); pag = 1;
     clearTimeout(reloj); reloj = setTimeout(cargar, 250);
   };
 

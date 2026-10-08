@@ -331,6 +331,11 @@ filtro de vencidas y el historial de fases de cada una. Es la vista de todas las
 tareas; el Historial de la ficha es el recorte de un riesgo. Para verlo por fecha
 está **Calendario**.
 
+Las tarjetas de **Tareas** y **Riesgos** usan letra chica y poco contraste para
+que la lista se recorra sin cansar. Cuando una lista pasa de **10** elementos se
+pagina: **8 por página**, con los controles al pie (el contador de cada estado
+sigue mostrando el total real, no solo lo que hay en la página).
+
 ## Calendario y medición de fases
 
 El módulo **Calendario** agenda tareas y controles sobre una rejilla mensual:
