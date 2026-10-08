@@ -264,8 +264,9 @@ bloques:
 
 1. **Datos de la tarea** — título, tipo de trabajo, responsable, fecha
    programada, fecha límite, prioridad y descripción del caso.
-2. **Informe** — área auditada o controlada, y antecedentes (qué motivó el
-   trabajo).
+2. **Informe** — área auditada o controlada, antecedentes (qué motivó el
+   trabajo) y **situación y desarrollo del control** (qué se encontró y cómo se
+   llevó a cabo el control o la auditoría).
 3. **Hallazgos** — una lista; se agregan y se quitan. Cada hallazgo arrastra su
    cadena completa:
 

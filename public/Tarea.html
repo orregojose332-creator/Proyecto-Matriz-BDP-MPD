@@ -75,6 +75,9 @@
       <div class="campo"><label for="f-antec">Antecedentes</label>
         <textarea id="f-antec" rows="3" maxlength="2000"
           placeholder="Qué motivó el trabajo, observaciones previas, contexto"></textarea></div>
+      <div class="campo"><label for="f-desarrollo">Situación y desarrollo del control</label>
+        <textarea id="f-desarrollo" rows="4" maxlength="4000"
+          placeholder="Describa la situación encontrada y cómo se llevó a cabo el control o la auditoría"></textarea></div>
     </section>
 
     <!-- ── Hallazgos ─────────────────────────────────────────────────────── -->
@@ -217,6 +220,7 @@
     G('f-desc').value = t.descripcion || '';
     G('f-area').value = t.area_auditada || '';
     G('f-antec').value = t.antecedentes || '';
+    G('f-desarrollo').value = t.desarrollo || '';
     (t.hallazgos || []).forEach(agregarHallazgo);
     if (t.riesgo_codigo) G('sub').textContent = `Vinculada al riesgo ${t.riesgo_codigo}`;
     G('volver').href = t.riesgo_id ? 'Riesgos.html' : 'Tareas.html';
@@ -265,6 +269,7 @@
       descripcion: G('f-desc').value.trim() || null,
       area_auditada: G('f-area').value.trim() || null,
       antecedentes: G('f-antec').value.trim() || null,
+      desarrollo: G('f-desarrollo').value.trim() || null,
       hallazgos: leerHallazgos(),
       riesgo_id: idRiesgo || (riesgo && riesgo.id) || undefined,
     };

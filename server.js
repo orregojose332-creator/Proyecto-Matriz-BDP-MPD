@@ -808,12 +808,12 @@ async function api(req, res, url) {
       await cx.beginTransaction();
       const hallazgos = normalizarHallazgos(b.hallazgos);
       const [r] = await cx.query(
-        `INSERT INTO tareas (codigo, titulo, descripcion, antecedentes, area_auditada,
+        `INSERT INTO tareas (codigo, titulo, descripcion, antecedentes, desarrollo, area_auditada,
             tipo, categoria_especial, confidencial, riesgo_id, control_id,
             fecha_programada, fecha_limite, prioridad, estado, responsable_id, creado_por)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Pendiente',?,?)`,
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'Pendiente',?,?)`,
         [b.codigo || `T-${Date.now().toString().slice(-8)}`, b.titulo, b.descripcion || null,
-         b.antecedentes || null, b.area_auditada || null,
+         b.antecedentes || null, b.desarrollo || null, b.area_auditada || null,
          tipo, esEspecial ? b.categoria_especial : null, confidencial ? 1 : 0,
          b.riesgo_id || null, b.control_id || null,
          b.fecha_programada, b.fecha_limite || null, b.prioridad || 'Media',
@@ -867,10 +867,10 @@ async function api(req, res, url) {
     try {
       await cx.beginTransaction();
       await cx.query(
-        `UPDATE tareas SET titulo=?, descripcion=?, antecedentes=?, area_auditada=?,
+        `UPDATE tareas SET titulo=?, descripcion=?, antecedentes=?, desarrollo=?, area_auditada=?,
                 tipo=?, categoria_especial=?, confidencial=?, riesgo_id=?, control_id=?,
                 fecha_programada=?, fecha_limite=?, prioridad=? WHERE id=?`,
-        [b.titulo, b.descripcion || null, b.antecedentes || null, b.area_auditada || null,
+        [b.titulo, b.descripcion || null, b.antecedentes || null, b.desarrollo || null, b.area_auditada || null,
          tipo, esEspecial ? categoria : null, confidencial ? 1 : 0,
          b.riesgo_id || null, b.control_id || null, b.fecha_programada,
          b.fecha_limite || null, b.prioridad || 'Media', rec[1]]);
