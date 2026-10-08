@@ -237,6 +237,14 @@ sobre el contenido; se cierra al tocar fuera, con Escape o al elegir un módulo.
 La lateral solo lista los módulos que el cargo del usuario puede abrir, pero eso
 es comodidad visual: el permiso se verifica igual en el servidor.
 
+**Colores de marca.** La interfaz usa el **verde corporativo de BDP** como acento
+(botones, módulo activo, enlaces, foco) y el **verde petróleo** en el logotipo;
+el azul y el naranja quedan para las dos series de los gráficos (inherente /
+residual), que están validadas para daltonismo. La escala de riesgo sigue la
+convención verde → ámbar → naranja → rojo (el verde y el rojo son los de la
+marca) y **siempre se muestra con su palabra**, no solo con el color. Todo sale
+de tokens en `app.css`, así que ajustar un color es un solo cambio.
+
 ## Los dos apartados de trabajo
 
 **Riesgos** es la vista de uso diario: una ficha por riesgo, con franja de color
@@ -448,7 +456,7 @@ db/seed.sql          permisos, cargos, factores, subfactores y escalas
 scripts/init-db.js   crea la base y aplica schema + seed
 scripts/crear-admin.js   alta del primer administrador
 public/              pantallas (HTML + JS sin framework)
-  app.css            tokens de color (claro y oscuro), toasts y modal
+  app.css            paleta BDP (marca verde), claro y oscuro, toasts y modal
   app.js             sesión, permisos, cliente SSE, barra lateral y utilidades
   Login · Reportes · Riesgos · Tareas · Matriz · Calendario · Usuarios · Cargos · Auditoria
   Tarea.html         carga/edición de una tarea como informe (hallazgos, plan de acción)

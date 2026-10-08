@@ -14,14 +14,20 @@
   --axis:       #c3c2b7;
   --borde:      rgba(11,11,11,.10);
 
-  --serie-1:    #2a78d6;          /* riesgo inherente */
+  /* Marca BDP: el verde corporativo es el acento de la interfaz (botones,
+     navegacion activa, enlaces, foco); el petroleo es para el logotipo. */
+  --marca:        #1f7a3d;
+  --marca-fuerte: #15433b;
+
+  --serie-1:    #2e6fb8;          /* riesgo inherente (azul corporativo) */
   --serie-2:    #eb6834;          /* riesgo residual  */
 
-  /* Niveles de riesgo: paleta de estado, siempre acompanada de su etiqueta. */
-  --nivel-bajo:     #0ca30c;
+  /* Niveles de riesgo: paleta de estado, siempre acompanada de su etiqueta.
+     Verde y rojo tomados de la marca; ambar y naranja intermedios. */
+  --nivel-bajo:     #2e8b3d;
   --nivel-moderado: #fab219;
   --nivel-alto:     #ec835a;
-  --nivel-critico:  #d03b3b;
+  --nivel-critico:  #cf2b2b;
 
   --radio: 10px;
   --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -37,6 +43,7 @@
     --ink-1: #fff;         --ink-2: #c3c2b7;   --ink-muted: #898781;
     --grid: #2c2c2a;       --axis: #383835;    --borde: rgba(255,255,255,.10);
     --serie-1: #3987e5;    --serie-2: #d95926;
+    --marca-fuerte: #4fb06a;   /* el logotipo en claro, legible sobre oscuro */
   }
 }
 :root[data-theme="dark"] {
@@ -45,6 +52,7 @@
   --ink-1: #fff;         --ink-2: #c3c2b7;   --ink-muted: #898781;
   --grid: #2c2c2a;       --axis: #383835;    --borde: rgba(255,255,255,.10);
   --serie-1: #3987e5;    --serie-2: #d95926;
+  --marca-fuerte: #4fb06a;
 }
 
 * { box-sizing: border-box; }
@@ -52,7 +60,7 @@ body {
   margin: 0; font-family: var(--sans); background: var(--plane); color: var(--ink-1);
   font-size: 14px; line-height: 1.5;
 }
-a { color: var(--serie-1); }
+a { color: var(--marca); }
 
 /* ─── Barra superior ─────────────────────────────────────────────────────── */
 header.barra {
@@ -61,7 +69,7 @@ header.barra {
   background: var(--surface-1); border-bottom: 1px solid var(--borde);
   position: sticky; top: 0; z-index: 40;
 }
-.marca { font-weight: 700; font-size: 15px; letter-spacing: .2px; white-space: nowrap; }
+.marca { font-weight: 700; font-size: 15px; letter-spacing: .2px; white-space: nowrap; color: var(--marca-fuerte); }
 .sesion { display: flex; align-items: center; gap: 10px; font-size: 13px;
           color: var(--ink-2); margin-left: auto; }
 
@@ -95,7 +103,7 @@ header.barra {
   color: var(--ink-2); font-weight: 500; font-size: 13.5px;
 }
 .lateral a:hover { background: var(--plane); color: var(--ink-1); }
-.lateral a[aria-current="page"] { background: var(--serie-1); color: #fff; }
+.lateral a[aria-current="page"] { background: var(--marca); color: #fff; }
 .lateral a svg { width: 20px; height: 20px; flex: none; }
 .lateral a .texto { overflow: hidden; text-overflow: ellipsis; }
 :root[data-lateral="contraida"] .lateral .titulo,
@@ -159,7 +167,7 @@ input, select, textarea {
   width: 100%; padding: 8px 10px; font: inherit; color: var(--ink-1);
   background: var(--surface-1); border: 1px solid var(--axis); border-radius: 8px;
 }
-input:focus, select:focus, textarea:focus { outline: 2px solid var(--serie-1); outline-offset: 1px; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--marca); outline-offset: 1px; }
 .campo { margin-bottom: 14px; }
 /* El atributo hidden lo pisa cualquier regla de autor que fije display, y
    .fila fija grid: sin este refuerzo una fila escondida se sigue viendo. */
@@ -171,7 +179,7 @@ button {
   border: 1px solid var(--axis); background: var(--surface-1); color: var(--ink-1); cursor: pointer;
 }
 button:hover { background: var(--plane); }
-button.primario { background: var(--serie-1); border-color: var(--serie-1); color: #fff; }
+button.primario { background: var(--marca); border-color: var(--marca); color: #fff; }
 button.primario:hover { filter: brightness(1.08); }
 button.peligro { color: var(--nivel-critico); border-color: var(--nivel-critico); }
 button:disabled { opacity: .5; cursor: not-allowed; }
@@ -306,6 +314,6 @@ svg text { font-family: var(--sans); }
   padding: 6px 10px; border-radius: 8px; border: 1px solid var(--borde);
   background: var(--surface-1); color: var(--ink-2); cursor: pointer; }
 .paginador button:hover:not(:disabled) { background: var(--plane); color: var(--ink-1); }
-.paginador button[aria-current="page"] { background: var(--serie-1); border-color: var(--serie-1); color: #fff; }
+.paginador button[aria-current="page"] { background: var(--marca); border-color: var(--marca); color: #fff; }
 .paginador button:disabled { opacity: .4; cursor: not-allowed; }
 .paginador .rango { font-size: 12px; color: var(--ink-muted); margin-left: 6px; }
