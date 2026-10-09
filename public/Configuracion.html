@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Configuración · Matriz MDP</title>
+<link rel="icon" href="favicon.svg">
+<link rel="stylesheet" href="app.css">
+<script src="tema.js"></script>
+<style>
+  .config { display: grid; gap: 16px; max-width: 760px; }
+  .perfil { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  .perfil .datos { min-width: 0; }
+  .perfil .datos h3 { margin: 0 0 2px; font-size: 16px; }
+  .perfil .datos p { margin: 0; color: var(--ink-muted); font-size: 13px; }
+  .perfil .acciones { margin-top: 10px; }
+  .opcion { margin-bottom: 16px; }
+  .opcion > label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .opcion .ayuda { font-weight: 400; color: var(--ink-muted); }
+  /* Elegir tema con muestras, no solo texto. */
+  .temas { display: flex; gap: 10px; flex-wrap: wrap; }
+  .tema-op { cursor: pointer; }
+  .tema-op input { position: absolute; opacity: 0; }
+  .tema-op .muestra { width: 72px; height: 46px; border-radius: 8px; border: 2px solid var(--borde);
+    overflow: hidden; display: block; }
+  .tema-op input:checked + .muestra { border-color: var(--marca); box-shadow: 0 0 0 2px var(--marca); }
+  .tema-op .nombre { display: block; text-align: center; font-size: 12px; margin-top: 4px; color: var(--ink-2); }
+  .muestra .barra-m { height: 14px; }
+  .muestra .cuerpo-m { height: 32px; display: flex; gap: 3px; padding: 4px; }
+  .muestra .cuerpo-m i { flex: 1; border-radius: 3px; }
+  .sel-fila { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(200px,100%), 1fr)); }
+  .barra-acciones { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Configuración</h1>
+  <p class="sub">Tus preferencias se guardan en tu usuario, así que te acompañan en cualquier equipo.</p>
+  <div id="aviso" class="aviso error" hidden></div>
+
+  <div class="config">
+    <!-- ── Foto de perfil ─────────────────────────────────────────────── -->
+    <section class="tarjeta">
+      <h2>Foto de perfil</h2>
+      <div class="perfil">
+        <div id="avatar-preview"></div>
+        <div class="datos">
+          <h3 id="p-nombre"></h3>
+          <p id="p-cargo"></p>
+          <div class="acciones">
+            <button type="button" class="accion" id="btn-foto">Cambiar foto</button>
+            <button type="button" class="accion peligro" id="btn-quitar-foto" hidden>Quitar</button>
+            <input type="file" id="in-foto" accept="image/png,image/jpeg,image/webp" hidden>
+          </div>
+          <p class="sub" style="font-size:12px;margin-top:8px">
+            Se reduce a 160 px antes de guardarla; no hace falta subir una imagen grande.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Apariencia ─────────────────────────────────────────────────── -->
+    <section class="tarjeta">
+      <h2>Apariencia</h2>
+
+      <div class="opcion">
+        <label>Tema de fondo <span class="ayuda">— se ve al instante</span></label>
+        <div class="temas" id="temas"></div>
+      </div>
+
+      <div class="sel-fila">
+        <div class="opcion" style="margin:0">
+          <label for="s-tam">Tamaño del texto</label>
+          <select id="s-tam">
+            <option value="sm">Pequeño</option>
+            <option value="md">Normal</option>
+            <option value="lg">Grande</option>
+          </select>
+        </div>
+        <div class="opcion" style="margin:0">
+          <label for="s-fuente">Tipo de letra</label>
+          <select id="s-fuente">
+            <option value="sistema">Sistema (predeterminada)</option>
+            <option value="serif">Serif (clásica)</option>
+            <option value="mono">Monoespaciada</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <div class="barra-acciones">
+      <button class="primario" id="btn-guardar">Guardar cambios</button>
+      <button type="button" id="btn-revertir">Descartar</button>
+      <span id="estado" style="font-size:12.5px;color:var(--ink-muted)"></span>
+    </div>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script>
+'use strict';
+(async () => {
+  const u = await MDP.iniciar();              // sin permiso: cualquier usuario entra
+  if (!u) return;
+  const { ui, api, aplicarPrefs, prefsDe, avatarHTML } = MDP;
+  const G = id => document.getElementById(id);
+
+  document.getElementById('p-nombre').textContent = u.nombre;
+  document.getElementById('p-cargo').textContent = u.cargo;
+
+  // Estado de edición: foto y preferencias. `guardado` es lo último persistido,
+  // para poder descartar los cambios de vista previa.
+  let foto = u.foto || null;
+  let guardado = { ...prefsDe(u), foto };
+
+  function pintarAvatar() {
+    G('avatar-preview').innerHTML = avatarHTML({ nombre: u.nombre, foto }, 'grande');
+    G('btn-quitar-foto').hidden = !foto;
+  }
+  pintarAvatar();
+
+  // ── Temas con muestra visual ───────────────────────────────────────────
+  const TEMAS = [
+    { v: 'auto',   nombre: 'Automático', barra: '#1f7a3d', fondo: '#f9f9f7', card: '#ffffff' },
+    { v: 'claro',  nombre: 'Claro',      barra: '#1f7a3d', fondo: '#f9f9f7', card: '#ffffff' },
+    { v: 'gris',   nombre: 'Gris',       barra: '#1f7a3d', fondo: '#2e3134', card: '#3a3d41' },
+    { v: 'oscuro', nombre: 'Oscuro',     barra: '#1f7a3d', fondo: '#0d0d0d', card: '#1a1a19' },
+  ];
+  G('temas').innerHTML = TEMAS.map(t => `
+    <label class="tema-op">
+      <input type="radio" name="tema" value="${t.v}">
+      <span class="muestra" style="background:${t.fondo}">
+        <span class="barra-m" style="background:${t.barra}"></span>
+        <span class="cuerpo-m"><i style="background:${t.card}"></i><i style="background:${t.card}"></i></span>
+      </span>
+      <span class="nombre">${t.nombre}</span>
+    </label>`).join('');
+
+  // ── Cargar los controles con lo guardado ───────────────────────────────
+  function cargarControles(p) {
+    document.querySelector(`input[name="tema"][value="${p.tema}"]`).checked = true;
+    G('s-tam').value = p.tam;
+    G('s-fuente').value = p.fuente;
+  }
+  cargarControles(guardado);
+
+  // Lee los controles en un objeto de preferencias.
+  const leer = () => ({
+    tema: document.querySelector('input[name="tema"]:checked').value,
+    tam: G('s-tam').value,
+    fuente: G('s-fuente').value,
+  });
+
+  // Vista previa inmediata al cambiar cualquier control.
+  function previsualizar() { aplicarPrefs(leer()); }
+  G('temas').addEventListener('change', previsualizar);
+  G('s-tam').addEventListener('change', previsualizar);
+  G('s-fuente').addEventListener('change', previsualizar);
+
+  // ── Foto: elegir, reducir a 160 px, previsualizar ──────────────────────
+  G('btn-foto').onclick = () => G('in-foto').click();
+  G('btn-quitar-foto').onclick = () => { foto = null; pintarAvatar(); };
+  G('in-foto').onchange = e => {
+    const file = e.target.files[0]; if (!file) return;
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 160, s = Math.min(1, max / Math.max(img.width, img.height));
+        const w = Math.round(img.width * s), h = Math.round(img.height * s);
+        const c = Object.assign(document.createElement('canvas'), { width: w, height: h });
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        foto = c.toDataURL('image/jpeg', 0.85);
+        pintarAvatar();
+      };
+      img.onerror = () => ui.aviso('No se pudo leer la imagen');
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+    e.target.value = '';   // permite volver a elegir el mismo archivo
+  };
+
+  // ── Guardar / descartar ─────────────────────────────────────────────────
+  G('btn-revertir').onclick = () => {
+    foto = guardado.foto; pintarAvatar();
+    cargarControles(guardado); aplicarPrefs(guardado);
+    G('estado').textContent = '';
+  };
+
+  G('btn-guardar').addEventListener('click', async () => {
+    const prefs = leer();
+    G('btn-guardar').disabled = true; G('estado').textContent = 'Guardando…';
+    try {
+      await api('/perfil', { method: 'PUT', cuerpo: {
+        pref_tema: prefs.tema, pref_tam: prefs.tam, pref_fuente: prefs.fuente, foto } });
+      guardado = { ...prefs, foto };
+      aplicarPrefs(prefs);
+      // Reflejar la foto en la barra superior y en la copia local del usuario.
+      const barraAv = document.querySelector('.sesion .avatar');
+      if (barraAv) barraAv.outerHTML = avatarHTML({ nombre: u.nombre, foto });
+      try {
+        const cache = JSON.parse(localStorage.getItem('mdp_usuario') || '{}');
+        Object.assign(cache, { foto, pref_tema: prefs.tema, pref_tam: prefs.tam, pref_fuente: prefs.fuente });
+        localStorage.setItem('mdp_usuario', JSON.stringify(cache));
+      } catch {}
+      ui.aviso('Preferencias guardadas', 'ok');
+      G('estado').textContent = '';
+    } catch (err) {
+      ui.aviso(err.message);
+      G('estado').textContent = '';
+    } finally { G('btn-guardar').disabled = false; }
+  });
+})();
+</script>
+</body>
+</html>

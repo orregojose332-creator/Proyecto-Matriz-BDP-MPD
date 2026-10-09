@@ -15,6 +15,7 @@ const MDP = (() => {
   function salir(motivo) {
     localStorage.removeItem(CLAVE_TOKEN);
     localStorage.removeItem('mdp_usuario');
+    localStorage.removeItem('mdp_prefs');
     const vuelve = encodeURIComponent(location.pathname.split('/').pop() || '');
     location.replace(`/Login.html?volver=${vuelve}${motivo ? '&motivo=' + motivo : ''}`);
   }
@@ -212,6 +213,8 @@ const MDP = (() => {
              + '<path d="m8.8 12.2 2.3 2.3 4.3-4.6"/>',
     auditoria: '<path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>'
              + '<path d="M14 3v5h5"/><path d="M9.5 13h6M9.5 17h4"/>',
+    config:    '<circle cx="12" cy="12" r="3"/>'
+             + '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>',
   };
   const icono = id => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
     stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
@@ -226,7 +229,39 @@ const MDP = (() => {
     { id: 'usuarios',  href: 'Usuarios.html',  texto: 'Usuarios',  permiso: 'usuarios.gestionar' },
     { id: 'cargos',    href: 'Cargos.html',    texto: 'Cargos',    permiso: 'cargos.gestionar' },
     { id: 'auditoria', href: 'Auditoria.html', texto: 'Auditoria', permiso: 'auditoria.ver' },
+    { id: 'config',    href: 'Configuracion.html', texto: 'Configuración', permiso: null },
   ];
+
+  /** Iniciales para el avatar cuando no hay foto (p. ej. "José Orrego" -> JO). */
+  function iniciales(nombre) {
+    const ps = String(nombre || '').trim().split(/\s+/);
+    return ((ps[0]?.[0] || '') + (ps[1]?.[0] || '')).toUpperCase() || '·';
+  }
+  function avatarHTML(u, clase = '') {
+    return u && u.foto
+      ? `<img class="avatar ${clase}" src="${ui.esc(u.foto)}" alt="">`
+      : `<span class="avatar ${clase}" aria-hidden="true">${ui.esc(iniciales(u && u.nombre))}</span>`;
+  }
+
+  /** Lee las preferencias del usuario (las del objeto o sus valores por defecto). */
+  function prefsDe(u) {
+    return { tema: (u && u.pref_tema) || 'auto',
+             tam:  (u && u.pref_tam)  || 'md',
+             fuente: (u && u.pref_fuente) || 'sistema' };
+  }
+  /** Aplica tema/tamaño/fuente al documento y las deja cacheadas para la
+   *  próxima pantalla (el script del <head> las lee de ahí sin parpadeo). */
+  function aplicarPrefs(prefs) {
+    const el = document.documentElement;
+    const attr = { claro: 'light', oscuro: 'dark', gris: 'gris' };
+    if (attr[prefs.tema]) el.setAttribute('data-theme', attr[prefs.tema]);
+    else el.removeAttribute('data-theme');
+    el.style.zoom = { sm: 0.92, md: 1, lg: 1.12 }[prefs.tam] || 1;
+    const fam = { serif: 'Georgia, "Times New Roman", serif',
+                  mono: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' }[prefs.fuente];
+    if (fam) el.style.setProperty('--sans', fam); else el.style.removeProperty('--sans');
+    try { localStorage.setItem('mdp_prefs', JSON.stringify(prefs)); } catch {}
+  }
 
   function barra() {
     const actual = location.pathname.split('/').pop();
@@ -243,13 +278,14 @@ const MDP = (() => {
           <span class="punto"></span><span class="txt">Conectando</span>
         </span>
         <span class="sesion">
+          <a href="Configuracion.html" title="Configuración" style="text-decoration:none">${avatarHTML(usuario)}</a>
           <span>${ui.esc(usuario.nombre)} · ${ui.esc(usuario.cargo)}</span>
           <button id="btn-salir">Salir</button>
         </span>
       </header>`);
 
     // El title es lo unico que queda al contraer la lateral, cuando solo hay icono.
-    const enlaces = PAGINAS.filter(p => puede(p.permiso)).map(p => `
+    const enlaces = PAGINAS.filter(p => !p.permiso || puede(p.permiso)).map(p => `
       <a href="${p.href}" title="${p.texto}"${p.href === actual ? ' aria-current="page"' : ''}>
         ${icono(p.id)}<span class="texto">${p.texto}</span>
       </a>`).join('');
@@ -325,6 +361,9 @@ const MDP = (() => {
     catch { return salir('expirada'), new Promise(() => {}); }
 
     localStorage.setItem('mdp_usuario', JSON.stringify(usuario));
+    // La base es la autoridad de las preferencias: se aplican y se cachean para
+    // que la próxima pantalla ya abra con el tema correcto.
+    aplicarPrefs(prefsDe(usuario));
     // En modo modal la pantalla se muestra dentro de otra (iframe): no lleva
     // barra ni barra lateral propias, ni abre su propio flujo en vivo.
     if (modal) document.documentElement.classList.add('en-modal');
@@ -371,5 +410,6 @@ const MDP = (() => {
     return cerrar;
   }
 
-  return { api, iniciar, modalTarea, puede, vivo, ui, salir, get usuario() { return usuario; } };
+  return { api, iniciar, modalTarea, puede, vivo, ui, salir, aplicarPrefs, prefsDe, avatarHTML,
+           get usuario() { return usuario; } };
 })();

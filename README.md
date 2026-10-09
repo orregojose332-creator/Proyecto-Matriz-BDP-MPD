@@ -68,6 +68,9 @@ todas las pantallas).
 - **Tareas**: todo lo agendado agrupado por estado, con el historial de fases.
 - **Calendario** de tareas y controles agendados, con medición de cuánto tarda
   cada fase del trabajo y cuántas manos pasa.
+- **Configuración por usuario**: foto de perfil, tema de fondo (automático,
+  claro, gris u oscuro), tamaño y tipo de letra; se guardan en el usuario y lo
+  acompañan en cualquier equipo.
 - **Bitácora de auditoría** de quién hizo qué y cuándo.
 
 ## Instalación en una PC nueva
@@ -431,6 +434,25 @@ protege de un disco que falla.
 > disco externo o en una carpeta de red con acceso restringido, no en el
 > repositorio ni aunque sea privado.
 
+## Configuración por usuario
+
+Cada persona tiene un apartado **Configuración** (lo ve cualquier usuario, sin
+permiso especial) donde elige:
+
+- **Foto de perfil**: se reduce a 160 px en el navegador antes de guardarla, así
+  que pesa pocos KB; se guarda como data URL en el usuario (no hay archivos ni
+  rutas en disco). Si no hay foto, el avatar muestra las iniciales.
+- **Tema de fondo**: Automático (sigue al sistema), Claro, **Gris** (un gris
+  medio, ni blanco ni negro) u Oscuro.
+- **Tamaño del texto** (pequeño / normal / grande) y **tipo de letra** (sistema,
+  serif o monoespaciada).
+
+Son datos del **usuario**, no del navegador, así que lo acompañan de un equipo a
+otro (se guardan en la base con `PUT /api/perfil`, que cada quien usa solo sobre
+lo suyo). Para que no haya un parpadeo de tema al cambiar de pantalla, un script
+mínimo (`tema.js`) los aplica en el `<head>` antes de pintar, leyendo una copia
+en el navegador que `app.js` reconcilia con la base al entrar.
+
 ## Seguridad
 
 - Contraseñas en **bcrypt** coste 12. Nunca en claro, ni en la base, ni en la
@@ -460,6 +482,8 @@ public/              pantallas (HTML + JS sin framework)
   app.js             sesión, permisos, cliente SSE, barra lateral y utilidades
   Login · Reportes · Riesgos · Tareas · Matriz · Calendario · Usuarios · Cargos · Auditoria
   Tarea.html         carga/edición de una tarea como informe (hallazgos, plan de acción)
+  Configuracion.html preferencias del usuario (foto, tema, tamaño y tipo de letra)
+  tema.js            aplica el tema y la letra en el <head>, antes de pintar (sin parpadeo)
 db/migracion-*.sql   cambios de esquema posteriores, aplicados en orden por init-db
 pruebas/             pruebas de API y de actualización en vivo
 ```
@@ -475,6 +499,7 @@ node pruebas/prueba-informe.js       # informe: hallazgos, plan de acción, edic
 node pruebas/prueba-calendario.js    # agenda, fases y métricas de tiempo
 node pruebas/prueba-ui-historial.js  # en navegador: Historial y el modal de la tarea
 node pruebas/prueba-notificaciones.js# en navegador: toasts al cambiar estado y borrar
+node pruebas/prueba-config.js        # en navegador: foto, tema, tamaño y tipo de letra
 node pruebas/dos-usuarios.js         # dos navegadores: actualización en vivo
 node pruebas/corte.js                # reconexión después de reiniciar el servidor
 ```

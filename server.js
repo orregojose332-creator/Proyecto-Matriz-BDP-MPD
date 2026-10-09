@@ -274,7 +274,9 @@ async function api(req, res, url) {
     return json(res, {
       token,
       usuario: { id: u.id, nombre: u.nombre, username: u.username, email: u.email,
-                 cargo: u.cargo, cargo_id: u.cargo_id, permisos },
+                 cargo: u.cargo, cargo_id: u.cargo_id, permisos,
+                 foto: u.foto || null, pref_tema: u.pref_tema, pref_tam: u.pref_tam,
+                 pref_fuente: u.pref_fuente },
     });
   }
 
@@ -282,11 +284,46 @@ async function api(req, res, url) {
     const s = sesion(req);
     if (!s) return err(res, 'No autenticado', 401);
     const [[u]] = await DB.query(
-      `SELECT u.id, u.nombre, u.username, u.email, u.cargo_id, c.nombre AS cargo
+      `SELECT u.id, u.nombre, u.username, u.email, u.cargo_id, c.nombre AS cargo,
+              u.foto, u.pref_tema, u.pref_tam, u.pref_fuente
          FROM usuarios u JOIN cargos c ON c.id = u.cargo_id
         WHERE u.id = ? AND u.activo = 1`, [s.id]);
     if (!u) return err(res, 'Sesion invalida', 401);
     return json(res, { ...u, permisos: await permisosDe(u.id) });
+  }
+
+  // ---- Perfil propio: foto y preferencias de quien esta logueado -----------
+  // No necesita permiso especial: cada usuario edita solo lo suyo (su s.id).
+  if (rec[0] === 'perfil' && rec.length === 1 && metodo === 'PUT') {
+    const s = sesion(req);
+    if (!s) return err(res, 'No autenticado', 401);
+    const b = await body(req);
+
+    const TEMAS = ['auto', 'claro', 'gris', 'oscuro'];
+    const TAMS = ['sm', 'md', 'lg'];
+    const FUENTES = ['sistema', 'serif', 'mono'];
+    const tema   = TEMAS.includes(b.pref_tema) ? b.pref_tema : 'auto';
+    const tam    = TAMS.includes(b.pref_tam) ? b.pref_tam : 'md';
+    const fuente = FUENTES.includes(b.pref_fuente) ? b.pref_fuente : 'sistema';
+
+    // La foto es opcional. Debe ser un data URL de imagen y no exagerar el peso
+    // (el navegador ya la reduce; el tope evita que alguien mande un archivo
+    //  enorme a la base). null la quita.
+    let foto;
+    if (b.foto === null || b.foto === '') foto = null;
+    else if (typeof b.foto === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(b.foto)) {
+      if (b.foto.length > 400000) return err(res, 'La imagen es demasiado grande (máx. ~300 KB)', 413);
+      foto = b.foto;
+    } else if (b.foto === undefined) foto = undefined;   // no tocar la foto
+    else return err(res, 'Formato de imagen no válido', 400);
+
+    const campos = ['pref_tema=?', 'pref_tam=?', 'pref_fuente=?'];
+    const args = [tema, tam, fuente];
+    if (foto !== undefined) { campos.push('foto=?'); args.push(foto); }
+    args.push(s.id);
+    await DB.query(`UPDATE usuarios SET ${campos.join(', ')} WHERE id=?`, args);
+    return json(res, { ok: true, pref_tema: tema, pref_tam: tam, pref_fuente: fuente,
+                       ...(foto !== undefined ? { foto } : {}) });
   }
 
   // ---- Catalogos -----------------------------------------------------------

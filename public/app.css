@@ -55,6 +55,17 @@
   --marca-fuerte: #4fb06a;
 }
 
+/* Tema gris: un gris medio, ni blanco ni negro, para quien prefiere algo
+   intermedio. Es un esquema oscuro suave. */
+:root[data-theme="gris"] {
+  color-scheme: dark;
+  --surface-1: #3a3d41;  --plane: #2e3134;
+  --ink-1: #f3f3f1;      --ink-2: #c9c9c5;   --ink-muted: #9b9b97;
+  --grid: #4a4e52;       --axis: #585c61;    --borde: rgba(255,255,255,.12);
+  --serie-1: #4b8fe0;    --serie-2: #ef7f4e;
+  --marca-fuerte: #4fb06a;
+}
+
 * { box-sizing: border-box; }
 body {
   margin: 0; font-family: var(--sans); background: var(--plane); color: var(--ink-1);
@@ -317,3 +328,12 @@ svg text { font-family: var(--sans); }
 .paginador button[aria-current="page"] { background: var(--marca); border-color: var(--marca); color: #fff; }
 .paginador button:disabled { opacity: .4; cursor: not-allowed; }
 .paginador .rango { font-size: 12px; color: var(--ink-muted); margin-left: 6px; }
+
+
+/* ─── Avatar de usuario ─────────────────────────────────────────────────── */
+.avatar { width: 30px; height: 30px; border-radius: 50%; flex: none;
+  object-fit: cover; background: var(--marca); color: #fff; display: inline-grid;
+  place-items: center; font-size: 12px; font-weight: 700; overflow: hidden;
+  border: 1px solid var(--borde); }
+.avatar.grande { width: 84px; height: 84px; font-size: 30px; }
+.sesion .avatar { margin-right: 2px; }
