@@ -205,6 +205,41 @@ El servidor escucha en todas las interfaces, así que los demás equipos entran 
   para su flujo. Con 6 o más pestañas del sistema abiertas a la vez, la última
   se queda esperando. Sirviendo por HTTPS con HTTP/2 el límite desaparece.
 
+### ¿Dónde dejar corriendo el servidor?
+
+El sistema necesita un equipo **siempre encendido** que haga de servidor (Node +
+MariaDB). En orden de practicidad para una oficina:
+
+| Opción | Cuándo conviene |
+|---|---|
+| **PC o notebook que quede encendida** | Lo más simple si ya hay una; es lo que asume esta guía. |
+| **Mini-PC o Raspberry Pi dedicada** | Ideal para una oficina chica: barata, bajo consumo, siempre prendida. Corre Node + MariaDB sin problema. |
+| **VPS en la nube** (servidor alquilado) | Siempre encendido y accesible desde cualquier lado; necesita internet y endurecer la seguridad por exponerlo a internet. |
+
+En cualquier caso, lo único que protege de un disco que falla es **respaldar**
+(`npm run respaldar`) a un disco aparte.
+
+**¿Se puede usar el teléfono como servidor?** Depende del sistema:
+
+- **iPhone (iOS): no.** El sistema no deja correr un servidor ni una base en
+  segundo plano de forma permanente.
+- **Android: sí, es posible** con **Termux** (una terminal Linux para Android),
+  que corre Node y MariaDB:
+  1. Instalar **Termux** desde **F-Droid** (la de Play Store está desactualizada).
+  2. `pkg install nodejs mariadb git`
+  3. Preparar la base (`mysql_install_db`, luego `mysqld_safe &`), clonar el
+     repositorio, `npm install`, `npm run init-db`, `npm run crear-admin` y
+     `npm start`.
+  4. Los demás equipos entran por `http://<IP-del-teléfono>:3100` en el **mismo
+     Wi-Fi**.
+  5. Correr `termux-wake-lock` para que Android no lo duerma.
+
+  Sirve para una prueba o un uso temporal, pero **no se recomienda para el uso
+  diario**: Android cierra procesos para ahorrar batería, es el teléfono personal
+  de alguien (se lo lleva, entra una llamada, se queda sin batería) y el sistema
+  se caería para toda el área. Para algo de lo que el trabajo depende, mejor una
+  de las opciones de la tabla de arriba.
+
 ## Metodología de cálculo
 
 ```
