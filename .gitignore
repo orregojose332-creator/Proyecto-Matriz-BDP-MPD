@@ -12,3 +12,11 @@ Thumbs.db
 
 # Capturas que generan las pruebas de navegador en la raíz
 corte-recuperado.png
+
+# Versión portátil: los binarios los descarga el usuario y los datos son suyos;
+# nada de esto va al repositorio. Solo se versionan los scripts y el instructivo.
+portatil/node/
+portatil/mariadb/
+portatil/datos/
+portatil/*.sock
+portatil/*.pid

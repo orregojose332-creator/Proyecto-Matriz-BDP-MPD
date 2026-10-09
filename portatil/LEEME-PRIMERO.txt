@@ -1,0 +1,86 @@
+===============================================================================
+  MATRIZ MDP  -  VERSION PORTATIL (sin instalar nada)
+===============================================================================
+
+Esto hace correr el SISTEMA REAL (Node + MariaDB) desde una carpeta, sin
+instalador y sin permisos de administrador. Entras por el navegador en
+http://localhost:3100 y los datos se guardan de verdad en una base.
+
+-------------------------------------------------------------------------------
+  AVISO IMPORTANTE ANTES DE EMPEZAR
+-------------------------------------------------------------------------------
+Esta version IGUAL ejecuta programas (node.exe y mariadbd.exe). Si tu notebook
+laboral tiene "lista blanca de aplicaciones" (AppLocker / WDAC), Windows va a
+BLOQUEARLOS aunque sean portatiles, y esto no va a arrancar. En ese caso usa la
+otra version, la que corre solo en el navegador (un archivo .html), que no
+ejecuta ningun programa y nunca se bloquea.
+
+Ademas: un sistema de prevencion LD/FT con datos reservados deberia correr en
+infraestructura de la institucion. Lo ideal es pedirle a Sistemas donde alojarlo.
+
+-------------------------------------------------------------------------------
+  QUE TENES QUE DESCARGAR (una sola vez, con internet)
+-------------------------------------------------------------------------------
+Las dos cosas son archivos ZIP que se descomprimen; NO son instaladores.
+
+1) NODE.JS (portatil, ZIP)
+   - Entra a:  https://nodejs.org/en/download
+   - Elegi:  Windows  ->  formato  .zip  (NO el .msi)
+   - Descomprimilo. Te queda una carpeta tipo  node-v22.x.x-win-x64
+   - Copiala DENTRO de esta carpeta "portatil" y renombrala a:   node
+     (tiene que quedar:  portatil\node\node.exe )
+
+2) MARIADB (portatil, ZIP)
+   - Entra a:  https://mariadb.org/download/
+   - En "Package Type" elegi:  ZIP file   (para Windows x86_64)
+   - Descomprimilo. Te queda una carpeta tipo  mariadb-11.x.x-winx64
+   - Copiala DENTRO de esta carpeta "portatil" y renombrala a:   mariadb
+     (tiene que quedar:  portatil\mariadb\bin\mariadbd.exe )
+
+Al final, dentro de "portatil" tiene que haber:
+     portatil\
+        ARRANCAR.bat
+        DETENER.bat
+        LEEME-PRIMERO.txt   (este archivo)
+        node\      <- lo descargaste vos
+        mariadb\   <- lo descargaste vos
+
+-------------------------------------------------------------------------------
+  COMO USARLO
+-------------------------------------------------------------------------------
+1) Doble clic en  ARRANCAR.bat
+
+   La PRIMERA vez:
+     - crea la base de datos (tarda unos segundos),
+     - te pide los datos del primer usuario administrador
+       (nombre, usuario, correo y una contrasena), y
+     - abre el navegador en http://localhost:3100.
+
+   Las siguientes veces arranca directo.
+
+2) Usa el sistema en el navegador. Deja abierta la ventana negra (la consola):
+   si la cerras, se apaga el servidor.
+
+3) Para apagar: cerra la ventana negra del servidor y despues hace doble clic
+   en  DETENER.bat  (apaga la base de datos).
+
+-------------------------------------------------------------------------------
+  PARA QUE ENTREN DESDE OTRAS COMPUTADORAS (red interna)
+-------------------------------------------------------------------------------
+El servidor ya escucha en la red. En esta PC abri una consola y escribi
+"ipconfig" para ver tu "Direccion IPv4" (por ej. 192.168.1.40). Los demas
+entran por  http://192.168.1.40:3100 . Hay que abrir el puerto 3100 en el
+Firewall de Windows, y esta PC no puede suspenderse.
+
+-------------------------------------------------------------------------------
+  SI ALGO NO ARRANCA
+-------------------------------------------------------------------------------
+- "No encuentro Node / MariaDB": revisa que las carpetas se llamen EXACTamente
+  "node" y "mariadb" y que adentro esten node.exe y bin\mariadbd.exe.
+- Si Windows bloquea node.exe o mariadbd.exe: es la lista blanca de aplicaciones.
+  Usa la version del navegador (.html), o pedile a Sistemas que los habilite.
+- Para empezar de cero: cerra todo, borra las carpetas "portatil\datos" y el
+  archivo ".env" de la carpeta del proyecto, y volve a ejecutar ARRANCAR.bat.
+
+(En Linux o Mac se usa el script  arrancar.sh  en lugar de los .bat.)
+===============================================================================

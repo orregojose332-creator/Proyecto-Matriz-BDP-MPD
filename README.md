@@ -158,6 +158,30 @@ funcione" sin ningún mensaje de error claro.
 Esa PC **no puede suspenderse**: si se duerme, se corta la base y los flujos en
 vivo de todos los usuarios.
 
+### Versión portátil (sin instalar nada)
+
+Para correr el sistema real desde una carpeta —sin instalador y sin permisos de
+administrador— está la carpeta [`portatil/`](portatil/). Trae un lanzador que
+levanta MariaDB y el servidor, crea la base y el primer administrador la primera
+vez, y abre `http://localhost:3100`.
+
+```
+portatil/
+  ARRANCAR.bat        # Windows: doble clic para arrancar
+  DETENER.bat         # Windows: apaga la base
+  arrancar.sh         # Linux / macOS
+  LEEME-PRIMERO.txt   # qué descargar (Node y MariaDB portátiles) y cómo usarlo
+```
+
+El usuario descarga los ZIP portátiles de **Node** y **MariaDB** y los deja como
+`portatil/node/` y `portatil/mariadb/` (instrucciones en `LEEME-PRIMERO.txt`).
+Esos binarios y los datos **no se versionan**.
+
+> **Límite real:** esta versión igual ejecuta `node.exe` y `mariadbd.exe`, así
+> que en equipos con **lista blanca de aplicaciones** (AppLocker/WDAC) queda
+> bloqueada. Para esos casos existe la versión que corre **solo en el
+> navegador** (un archivo `.html` que no ejecuta ningún programa).
+
 ## Cargos que vienen cargados
 
 | Cargo | Puede |
