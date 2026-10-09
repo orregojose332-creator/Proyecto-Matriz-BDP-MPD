@@ -137,7 +137,7 @@
         ${Number(t.traspasos) ? `<span>${t.traspasos} traspaso(s)</span>` : ''}
         ${Number(t.hallazgos_count) ? `<span>${t.hallazgos_count} hallazgo(s)</span>` : ''}
       </div>
-      ${abierta && d ? panelFases(d) : ''}
+      ${abierta && d ? `<div class="fases-panel mdp-abrir">${panelFases(d)}</div>` : ''}
       <div class="pie">
         <button class="accion" data-fases="${t.id}">${abierta ? '− Menos' : '+ Info'}</button>
         <a class="accion" href="Tarea.html?id=${t.id}" data-informe="${t.id}">Abrir informe</a>
@@ -227,14 +227,20 @@
       const id = Number(enlace.dataset.informe);
       return MDP.modalTarea(`id=${id}`, async res => {
         if (res.accion === 'editada') { ui.aviso('Tarea actualizada correctamente', 'ok'); delete detalles[id]; await cargar(); }
-      });
+      }, enlace);
     }
     const b = e.target.closest('button[data-fases],button[data-avanzar]');
     if (!b) return;
     const id = Number(b.dataset.fases || b.dataset.avanzar);
     try {
-      if (!abiertas.has(id)) { abiertas.add(id); pintar(); detalles[id] = await api(`/tareas/${id}`); }
-      else if (b.dataset.fases) abiertas.delete(id);
+      if (!abiertas.has(id)) {
+        abiertas.add(id); pintar(); detalles[id] = await api(`/tareas/${id}`); return pintar();
+      }
+      if (b.dataset.fases) {
+        // Cerrar con animación: encoger el panel y luego re-pintar.
+        const panel = b.closest('.item')?.querySelector('.fases-panel');
+        return ui.cerrarPanel(panel, () => { abiertas.delete(id); pintar(); });
+      }
       pintar();
       if (b.dataset.avanzar) document.querySelector(`form[data-avance="${id}"]`)
         ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });

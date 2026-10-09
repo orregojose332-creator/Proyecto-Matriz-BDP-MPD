@@ -299,7 +299,14 @@ svg text { font-family: var(--sans); }
   position: relative; width: min(880px, 100%); height: min(92vh, 100%);
   background: var(--surface-1); border-radius: 14px; overflow: hidden;
   box-shadow: 0 24px 60px rgba(0,0,0,.4); display: flex; flex-direction: column;
+  /* Estado cerrado: encogido. Al abrir crece hasta su tamaño; al cerrar vuelve
+     a encogerse (si viene de un cuadro, JS lo lleva hacia ese cuadro). */
+  opacity: 0; transform: scale(.9);
+  transform-origin: center center;
+  transition: transform .24s cubic-bezier(.2,.8,.25,1), opacity .2s ease;
+  will-change: transform, opacity;
 }
+.modal-velo.visible .modal-caja { opacity: 1; transform: none; }
 .modal-frame { flex: 1; width: 100%; border: 0; display: block; }
 .modal-x {
   position: absolute; top: 8px; right: 10px; z-index: 2;
@@ -307,10 +314,30 @@ svg text { font-family: var(--sans); }
   background: var(--surface-1); border: 1px solid var(--borde); color: var(--ink-2); cursor: pointer;
 }
 .modal-x:hover { background: var(--plane); color: var(--ink-1); }
-@media (prefers-reduced-motion: reduce) { .modal-velo { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .modal-velo, .modal-caja { transition: none; }
+  .modal-caja { transform: none; }
+}
 @media (max-width: 640px) {
   .modal-velo { padding: 0; }
   .modal-caja { width: 100%; height: 100%; border-radius: 0; }
+}
+
+/* ─── Despliegue de paneles (abrir/cerrar en una pieza) ─────────────────────
+   Un mismo gesto para todo lo que se expande: fichas de riesgo (+ Info,
+   Historial), tareas (+ Info), y los cuadros de Matriz/Calendario. Se revela
+   de arriba hacia abajo (sin deformar el texto) con un leve desvanecido. La
+   apertura la pone el propio marcado al pintar abierto; el cierre lo maneja
+   MDP.ui.cerrarPanel, que reproduce el gesto en reversa antes de quitarlo. */
+@keyframes mdp-desplegar {
+  from { opacity: 0; transform: translateY(-5px); clip-path: inset(0 0 100% 0); }
+  to   { opacity: 1; transform: none;             clip-path: inset(0 0 0 0); }
+}
+.mdp-abrir  { animation: mdp-desplegar .2s cubic-bezier(.2,.8,.25,1) both; }
+.mdp-cerrar { animation: mdp-desplegar .17s cubic-bezier(.4,0,1,1) reverse both;
+              pointer-events: none; overflow: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  .mdp-abrir, .mdp-cerrar { animation: none; }
 }
 
 /* Cuando una pantalla se muestra DENTRO de un modal (iframe), no lleva la

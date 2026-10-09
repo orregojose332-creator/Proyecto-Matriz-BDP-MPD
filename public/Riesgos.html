@@ -195,8 +195,8 @@ a.hist-titulo:hover { text-decoration: underline; }
           ${Number(r.tareas_abiertas) ? `<span style="color:var(--nivel-alto);font-weight:500">${r.tareas_abiertas} tarea(s) abierta(s)</span>` : ''}
         </div>
       </div>
-      ${abierta ? `<div class="info">${d ? panelInfo(d) : '<p class="sin-dato">Cargando…</p>'}</div>` : ''}
-      ${enHistorial ? `<div class="info">${
+      ${abierta ? `<div class="info mdp-abrir" data-panel="info">${d ? panelInfo(d) : '<p class="sin-dato">Cargando…</p>'}</div>` : ''}
+      ${enHistorial ? `<div class="info mdp-abrir" data-panel="hist">${
         historial[r.id] ? panelHistorial(r, historial[r.id]) : '<p class="sin-dato">Cargando…</p>'
       }</div>` : ''}
       <div class="pie">
@@ -370,7 +370,7 @@ a.hist-titulo:hover { text-decoration: underline; }
               document.getElementById('fichas').scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     // El título de una tarea en el historial abre su informe en un modal.
     const enlace = e.target.closest('a.hist-titulo');
-    if (enlace) { e.preventDefault(); return verTarea(Number(enlace.dataset.tarea)); }
+    if (enlace) { e.preventDefault(); return verTarea(Number(enlace.dataset.tarea), enlace); }
 
     const b = e.target.closest('button[data-info],button[data-historial],button[data-editar],button[data-tarea],button[data-aprobar]');
     if (!b) return;
@@ -378,21 +378,27 @@ a.hist-titulo:hover { text-decoration: underline; }
                       || b.dataset.tarea || b.dataset.aprobar);
     try {
       if (b.dataset.info) {
-        if (abiertos.has(id)) abiertos.delete(id);
-        else { abiertos.add(id); if (!detalles[id]) { pintar(); detalles[id] = await api(`/riesgos/${id}`); } }
+        if (abiertos.has(id)) {
+          // Cerrar con animación: encoger el panel y recién después re-pintar.
+          const panel = b.closest('article')?.querySelector('.info[data-panel="info"]');
+          return ui.cerrarPanel(panel, () => { abiertos.delete(id); pintar(); });
+        }
+        abiertos.add(id);
+        if (!detalles[id]) { pintar(); detalles[id] = await api(`/riesgos/${id}`); }
         return pintar();
       }
       if (b.dataset.historial) {
-        if (historiales.has(id)) historiales.delete(id);
-        else {
-          historiales.add(id);
-          // Pintar primero deja el panel con el «Cargando…» mientras va el pedido.
-          if (!historial[id]) { pintar(); historial[id] = await traerHistorial(id); }
+        if (historiales.has(id)) {
+          const panel = b.closest('article')?.querySelector('.info[data-panel="hist"]');
+          return ui.cerrarPanel(panel, () => { historiales.delete(id); pintar(); });
         }
+        historiales.add(id);
+        // Pintar primero deja el panel con el «Cargando…» mientras va el pedido.
+        if (!historial[id]) { pintar(); historial[id] = await traerHistorial(id); }
         return pintar();
       }
       if (b.dataset.editar)  return editar(id);
-      if (b.dataset.tarea)   return nuevaTarea(id);
+      if (b.dataset.tarea)   return nuevaTarea(id, b);
       if (b.dataset.aprobar) {
         await api(`/riesgos/${id}/estado`, { method: 'POST', cuerpo: { estado: 'Aprobado' } });
         return ui.aviso('Riesgo aprobado', 'ok');
@@ -403,7 +409,8 @@ a.hist-titulo:hover { text-decoration: underline; }
   // ─── Alta y edición ──────────────────────────────────────────────────────
   const caja = document.getElementById('caja-form');
   if (puede('riesgos.crear')) document.getElementById('btn-nuevo').hidden = false;
-  document.getElementById('btn-cancelar').onclick = () => { caja.hidden = true; };
+  const cerrarForm = () => ui.cerrarPanel(caja, () => { caja.hidden = true; });
+  document.getElementById('btn-cancelar').onclick = cerrarForm;
 
   document.getElementById('btn-nuevo').onclick = () => {
     document.getElementById('form').reset();
@@ -411,7 +418,7 @@ a.hist-titulo:hover { text-decoration: underline; }
     document.getElementById('r-fecha').value = new Date().toISOString().slice(0, 10);
     document.getElementById('form-titulo').textContent = 'Nuevo riesgo';
     subfactores(); recalcular();
-    caja.hidden = false;
+    ui.abrirPanel(caja);
     caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   };
 
@@ -429,7 +436,7 @@ a.hist-titulo:hover { text-decoration: underline; }
     document.getElementById('r-subfactor').value = r.subfactor_id || '';
     recalcular();
     document.getElementById('form-titulo').textContent = `Editar ${r.codigo}`;
-    caja.hidden = false;
+    ui.abrirPanel(caja);
     caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
@@ -452,7 +459,7 @@ a.hist-titulo:hover { text-decoration: underline; }
     try {
       if (id) { await api(`/riesgos/${id}`, { method: 'PUT', cuerpo }); delete detalles[id]; }
       else      await api('/riesgos', { method: 'POST', cuerpo });
-      caja.hidden = true;
+      cerrarForm();
       ui.aviso(id ? 'Riesgo actualizado' : 'Riesgo creado', 'ok');
     } catch (err) { ui.aviso(err.message); }
   });
@@ -461,21 +468,21 @@ a.hist-titulo:hover { text-decoration: underline; }
   // La carga de una tarea pasó a ser una pantalla propia (informe completo:
   // antecedentes, hallazgos, recomendaciones y plan de acción). Desde acá solo
   // se abre esa pantalla, ya apuntada al riesgo.
-  function nuevaTarea(idRiesgo) {
+  function nuevaTarea(idRiesgo, origen) {
     MDP.modalTarea(`riesgo=${idRiesgo}`, async res => {
       if (res.accion !== 'creada') return;
       ui.aviso('Tarea creada correctamente', 'ok');
       if (puede('tareas.ver')) historiales.add(idRiesgo);   // se ve en el acto
       await cargar();
-    });
+    }, origen);
   }
 
   // Abre el informe de una tarea existente en el modal (ver o editar).
-  function verTarea(idTarea) {
+  function verTarea(idTarea, origen) {
     MDP.modalTarea(`id=${idTarea}`, async res => {
       if (res.accion === 'editada') ui.aviso('Tarea actualizada correctamente', 'ok');
       if (res.accion === 'editada') await cargar();
-    });
+    }, origen);
   }
 
   /** Todas las tareas del riesgo, en cualquier estado. El servidor ya quita

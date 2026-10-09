@@ -192,6 +192,35 @@ const MDP = (() => {
         ocultar() { if (el) el.dataset.ver = '0'; },
       };
     })(),
+
+    /** Muestra un cuadro persistente (uno que se oculta con `hidden`, no se
+     *  vuelve a crear) reproduciendo el gesto de apertura. Reinicia la
+     *  animación aunque el elemento ya estuviera en el DOM. */
+    abrirPanel(el) {
+      if (!el) return;
+      el.classList.remove('mdp-cerrar');
+      el.hidden = false;
+      el.classList.remove('mdp-abrir');
+      void el.offsetWidth;                       // fuerza reinicio de la animación
+      el.classList.add('mdp-abrir');
+    },
+
+    /** Cierra un panel desplegado con el mismo gesto en reversa y recién
+     *  entonces ejecuta `luego` (donde se quita del DOM o se vuelve a pintar).
+     *  Si el panel no existe o el usuario pidió menos movimiento, llama a
+     *  `luego` al instante, sin animar. La apertura no necesita ayuda: basta
+     *  con que el elemento nazca con la clase .mdp-abrir. */
+    cerrarPanel(el, luego) {
+      const fin = () => { if (luego) luego(); };
+      const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (!el || reduce) return fin();
+      el.classList.remove('mdp-abrir');
+      el.classList.add('mdp-cerrar');
+      let hecho = false;
+      const unaVez = () => { if (hecho) return; hecho = true; fin(); };
+      el.addEventListener('animationend', unaVez, { once: true });
+      setTimeout(unaVez, 220);                 // respaldo si no dispara animationend
+    },
   };
 
   // ─── Barra superior y barra lateral ──────────────────────────────────────
@@ -381,8 +410,11 @@ const MDP = (() => {
 
   /** Abre una pantalla (Tarea.html) como ventana superpuesta sobre la actual.
    *  `params` es la query (p. ej. 'riesgo=3' o 'id=12'); `alCerrar` recibe el
-   *  resultado que la pantalla de adentro informa al guardar o cancelar. */
-  function modalTarea(params, alCerrar) {
+   *  resultado que la pantalla de adentro informa al guardar o cancelar.
+   *  `origen` (opcional) es el elemento desde el que se abrió —el cuadro o botón
+   *  del riesgo—: la ventana se expande desde ahí y, al cerrar, se contrae hacia
+   *  el mismo lugar, para que la apertura y el cierre se sientan de una pieza. */
+  function modalTarea(params, alCerrar, origen) {
     const velo = Object.assign(document.createElement('div'), { className: 'modal-velo' });
     velo.innerHTML = `
       <div class="modal-caja" role="dialog" aria-modal="true">
@@ -391,14 +423,37 @@ const MDP = (() => {
       </div>`;
     document.body.appendChild(velo);
     document.documentElement.style.overflow = 'hidden';
+    const caja = velo.querySelector('.modal-caja');
+
+    // Transform que lleva la ventana (ya a tamaño completo y centrada) hasta el
+    // cuadro de origen, encogida. Se usa como punto de partida al abrir y como
+    // destino al cerrar, así nace y muere en el mismo lugar.
+    const haciaOrigen = () => {
+      if (!origen || !origen.getBoundingClientRect) return null;
+      const o = origen.getBoundingClientRect();
+      if (!o.width || !o.height) return null;          // origen fuera de pantalla
+      const c = caja.getBoundingClientRect();
+      if (!c.width) return null;
+      const dx = (o.left + o.width / 2) - (c.left + c.width / 2);
+      const dy = (o.top + o.height / 2) - (c.top + c.height / 2);
+      return `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(.16)`;
+    };
+
     let cerrado = false;
     const cerrar = resultado => {
       if (cerrado) return; cerrado = true;
       window.removeEventListener('message', onMsg);
       document.removeEventListener('keydown', onEsc);
       document.documentElement.style.overflow = '';
-      velo.remove();
-      if (alCerrar) alCerrar(resultado || { accion: 'cancelada' });
+      const fin = () => { velo.remove(); if (alCerrar) alCerrar(resultado || { accion: 'cancelada' }); };
+      // Contraer hacia el origen (o simplemente encoger) y recién entonces quitar.
+      const destino = haciaOrigen();
+      if (destino) caja.style.transform = destino;
+      velo.classList.remove('visible');
+      let listo = false;
+      const unaVez = () => { if (listo) return; listo = true; fin(); };
+      caja.addEventListener('transitionend', e => { if (e.propertyName === 'transform') unaVez(); });
+      setTimeout(unaVez, 320);                          // respaldo si no hay transición
     };
     const onMsg = e => { if (e.data && e.data.mdpTarea) cerrar(e.data.mdpTarea); };
     const onEsc = e => { if (e.key === 'Escape') cerrar(); };
@@ -406,7 +461,14 @@ const MDP = (() => {
     document.addEventListener('keydown', onEsc);
     velo.addEventListener('click', e => { if (e.target === velo) cerrar(); });
     velo.querySelector('.modal-x').onclick = () => cerrar();
-    requestAnimationFrame(() => velo.classList.add('visible'));
+
+    // Apertura: partir desde el origen (si lo hay) y crecer hasta el centro.
+    const desde = haciaOrigen();
+    if (desde) caja.style.transform = desde;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      velo.classList.add('visible');
+      if (desde) caja.style.transform = '';            // deja mandar a la clase .visible
+    }));
     return cerrar;
   }
 

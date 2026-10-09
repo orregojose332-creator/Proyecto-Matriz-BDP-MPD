@@ -150,7 +150,10 @@
   const cajaControles = document.getElementById('caja-controles');
 
   async function abrirControles(id, mantener = false) {
-    if (!mantener && expandido === id) { cajaControles.hidden = true; expandido = null; return; }
+    if (!mantener && expandido === id) {          // segundo clic: cerrar con animación
+      expandido = null;
+      return ui.cerrarPanel(cajaControles, () => { cajaControles.hidden = true; });
+    }
     expandido = id;
     const r = await api(`/riesgos/${id}`);
     cajaControles.innerHTML = `
@@ -182,8 +185,10 @@
             <input type="checkbox" name="documentado" style="width:auto"> Documentado</label></div>
           <div><button class="primario">Agregar control</button></div>
         </form>` : ''}`;
-    cajaControles.hidden = false;
-    if (!mantener) cajaControles.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Al abrir de nuevo se anima; al refrescar (mantener) ya está visible y no
+    // conviene reproducir el gesto en cada alta/baja de control.
+    if (mantener) cajaControles.hidden = false;
+    else { ui.abrirPanel(cajaControles); cajaControles.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
   }
 
   // ─── Acciones de la tabla ────────────────────────────────────────────────
@@ -210,7 +215,8 @@
   // ─── Acciones dentro del panel de controles (fuera de la tabla) ──────────
   cajaControles.addEventListener('click', async e => {
     if (e.target.closest('[data-cerrar-controles]')) {
-      cajaControles.hidden = true; expandido = null; return;
+      expandido = null;
+      return ui.cerrarPanel(cajaControles, () => { cajaControles.hidden = true; });
     }
     const b = e.target.closest('button[data-accion="borrar-control"]');
     if (!b) return;
@@ -241,9 +247,10 @@
 
   function abrirForm(titulo) {
     document.getElementById('form-titulo').textContent = titulo;
-    caja.hidden = false;
+    ui.abrirPanel(caja);
     caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
+  const cerrarForm = () => ui.cerrarPanel(caja, () => { caja.hidden = true; });
 
   document.getElementById('btn-nuevo').onclick = () => {
     document.getElementById('form').reset();
@@ -252,7 +259,7 @@
     subfactores(); recalcular();
     abrirForm('Nuevo riesgo');
   };
-  document.getElementById('btn-cancelar').onclick = () => { caja.hidden = true; };
+  document.getElementById('btn-cancelar').onclick = cerrarForm;
 
   async function editar(id) {
     const r = await api(`/riesgos/${id}`);
@@ -289,7 +296,7 @@
     try {
       if (id) await api(`/riesgos/${id}`, { method: 'PUT',  cuerpo });
       else    await api('/riesgos',       { method: 'POST', cuerpo });
-      caja.hidden = true;
+      cerrarForm();
       ui.aviso(id ? 'Riesgo actualizado' : 'Riesgo creado', 'ok');
     } catch (err) { ui.aviso(err.message); }
   });

@@ -307,7 +307,6 @@
       </li>`;
     }).join('');
 
-    caja.hidden = false;
     caja.innerHTML = `
       <div class="acciones" style="justify-content:space-between;margin-bottom:12px">
         <h2 style="margin:0">${ui.esc(detalle.titulo)}</h2>
@@ -336,6 +335,7 @@
             <input name="nota" maxlength="500" placeholder="Por qué cambia"></div>
           <div><button class="primario">Registrar cambio</button></div>
         </form>` : ''}`;
+    ui.abrirPanel(caja);
     caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
@@ -354,7 +354,10 @@
 
   document.getElementById('caja-detalle').addEventListener('click', e => {
     if (e.target.id === 'cerrar-detalle') {
-      document.getElementById('caja-detalle').hidden = true; detalle = null;
+      detalle = null;
+      ui.cerrarPanel(document.getElementById('caja-detalle'), () => {
+        document.getElementById('caja-detalle').hidden = true;
+      });
     }
   });
 
@@ -384,14 +387,15 @@
   // ─── Alta ────────────────────────────────────────────────────────────────
   const caja = document.getElementById('caja-form');
   if (puede('tareas.crear')) document.getElementById('btn-nueva').hidden = false;
+  const cerrarForm = () => ui.cerrarPanel(caja, () => { caja.hidden = true; });
   document.getElementById('btn-nueva').onclick = () => {
     document.getElementById('form').reset();
     document.getElementById('t-id').value = '';
     document.getElementById('t-fecha').value = diaSel || hoyIso;
-    caja.hidden = false;
+    ui.abrirPanel(caja);
     caja.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   };
-  document.getElementById('btn-cancelar').onclick = () => { caja.hidden = true; };
+  document.getElementById('btn-cancelar').onclick = cerrarForm;
 
   document.getElementById('form').addEventListener('submit', async e => {
     e.preventDefault();
@@ -409,7 +413,7 @@
       const id = document.getElementById('t-id').value;
       if (id) await api(`/tareas/${id}`, { method: 'PUT', cuerpo });
       else    await api('/tareas',       { method: 'POST', cuerpo });
-      caja.hidden = true;
+      cerrarForm();
       ui.aviso(id ? 'Tarea actualizada' : 'Tarea agendada', 'ok');
     } catch (err) { ui.aviso(err.message); }
   });
